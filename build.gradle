@@ -1,0 +1,64 @@
+plugins {
+    id 'application'
+    id 'org.openjfx.javafxplugin' version '0.0.13'
+    id 'org.beryx.jlink' version '2.25.0'
+}
+
+group 'pro.javacard.nfc4pc'
+version '230103'
+
+repositories {
+    mavenCentral()
+    maven {
+        url 'https://javacard.pro/maven/'
+    }
+}
+
+compileJava {
+    sourceCompatibility = '11'
+    targetCompatibility = '11'
+}
+
+javafx {
+    version = "20-ea+11"
+    modules = ['javafx.controls', 'javafx.graphics', 'javafx.swing']
+}
+
+//jlink {
+//    launcher {
+//        name = 'pro.javacard.nfc4pc'
+//    }
+//}
+
+application {
+    mainClassName = "$moduleName/pro.javacard.nfc4pc.MainWrapper"
+    mainModule = "pro.javacard.nfc4pc"
+}
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'pro.javacard.nfc4pc.MainWrapper'
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+}
+
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
+    implementation 'com.github.martinpaljak:apdu4j-pcsc:22.09.07'
+    implementation 'com.dustinredmond.fxtrayicon:FXTrayIcon:4.0.1'
+    implementation 'org.slf4j:slf4j-simple:2.0.6'
+    runtimeOnly "org.openjfx:javafx-graphics:$javafx.version:win"
+    runtimeOnly "org.openjfx:javafx-graphics:$javafx.version:mac"
+    runtimeOnly "org.openjfx:javafx-graphics:$javafx.version:linux"
+    runtimeOnly "org.openjfx:javafx-graphics:$javafx.version:mac-aarch64"
+
+}
+
+test {
+    useJUnitPlatform()
+}
