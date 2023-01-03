@@ -5,6 +5,9 @@ Small (currently Work-In-Progress, Proof-Of-Concept) Java application to solve "
 
 > https://superuser.com/questions/1756090/how-to-open-nfc-tags-on-windows-like-a-mobile-phone-woulda
 
+### See it in action!
+A crappy video of a quick hack! https://mrtn.ee/tmp/nfc4pc.mp4
+
 ## Building and using
 - On Apple silicon use M1 Zulu JDK 11+
 ```
