@@ -25,6 +25,6 @@ PROBABLY:
 - from .jar/wrapped .exe to native package with GraalVM, if feasible
 
 MAYBE (very MAYBE)
-- support for NDEF on NXP MIFARE chips with certain readers (ACS being suspect)
+- support for NDEF on NXP MIFARE/NTAG chips with certain readers (ACS being suspect)
 - sypport for other payload types (mailto, sms, tel)
 - re-implement in popular binary friendly language with native targets (Rust, Go, ... ?)
