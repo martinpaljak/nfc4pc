@@ -22,7 +22,7 @@ $ java -jar build/libs/nfc4pc-230103.jar
 
 PROBABLY:
 - Configuration for browser selection
-- from .jar/wrapped .exe to native package
+- from .jar/wrapped .exe to native package with GraalVM, if feasible
 
 MAYBE (very MAYBE)
 - support for NDEF on NXP MIFARE chips with certain readers (ACS being suspect)
