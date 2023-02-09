@@ -9,6 +9,8 @@ module pro.javacard.nfc4pc {
     requires org.slf4j;
     requires com.dustinredmond.fxtrayicon;
     requires com.sun.jna;
+    requires jopt.simple;
+    requires ber.tlv;
 
     exports pro.javacard.nfc4pc;
 }

@@ -1,20 +1,22 @@
 package pro.javacard.nfc4pc;
 
-import apdu4j.core.APDUBIBO;
-import apdu4j.core.CommandAPDU;
-import apdu4j.core.HexUtils;
-import apdu4j.core.ResponseAPDU;
+import apdu4j.core.*;
 import apdu4j.pcsc.*;
+import apdu4j.pcsc.terminals.LoggingCardTerminal;
 import com.dustinredmond.fxtrayicon.FXTrayIcon;
+import com.payneteasy.tlv.BerTlvParser;
+import com.payneteasy.tlv.BerTlvs;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
+import joptsimple.OptionSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.smartcardio.Card;
 import javax.smartcardio.CardException;
+import javax.smartcardio.CardTerminal;
 import java.awt.*;
 import java.io.IOException;
 import java.net.URI;
@@ -23,17 +25,34 @@ import java.util.List;
 import java.util.concurrent.*;
 
 public class Main extends Application implements PCSCMonitor {
-
     static final Logger log = LoggerFactory.getLogger(Main.class);
 
     // D2760000850101
     static final byte[] NDEF_AID = new byte[]{(byte) 0xD2, (byte) 0x76, (byte) 0x00, (byte) 0x00, (byte) 0x85, (byte) 0x01, (byte) 0x01};
 
+    // Lets have a thread per reader and a monitoring thread, in addition to the UI thread. Many threads, yay!
     private final TerminalManager manager = TerminalManager.getDefault();
     private final Thread pcscMonitor = new Thread(new HandyTerminalsMonitor(manager, this));
 
-    // This executor holds the reader and executes tasks on the thread owning the reader, rejecting tasks if one is active
-    private static final ExecutorService readerThread = new ThreadPoolExecutor(1, 3, Long.MAX_VALUE, TimeUnit.NANOSECONDS, new SynchronousQueue<>());
+    ConcurrentHashMap<String, ExecutorService> readerThreads = new ConcurrentHashMap<>();
+
+    static ThreadLocal<CardTerminal> readers = ThreadLocal.withInitial(() -> null);
+
+    void onReaderThread(String name, Runnable r) {
+        readerThreads.computeIfAbsent(name, (n) -> Executors.newSingleThreadExecutor(new NamedReaderThreadFactory(n))).submit(r);
+    }
+
+    static final class NamedReaderThreadFactory implements ThreadFactory {
+        final String n;
+
+        public NamedReaderThreadFactory(String name) {
+            n = name;
+        }
+
+        public Thread newThread(Runnable r) {
+            return new Thread(r, n);
+        }
+    }
 
     private FXTrayIcon icon;
     private static Thread shutdownHook;
@@ -91,7 +110,7 @@ public class Main extends Application implements PCSCMonitor {
         }
     }
 
-    public static void main(String[] args, Thread theHook) {
+    public static void main(OptionSet opts, Thread theHook) {
         // normal exit via menu removes hook
         shutdownHook = theHook;
         launch();
@@ -115,21 +134,42 @@ public class Main extends Application implements PCSCMonitor {
                     }
                 }
                 // Try to read
-                readerThread.submit(() -> tryToRead(n));
+                onReaderThread(n, this::tryToRead);
             }
+            // Store state of _this_ notification
+            readerStates.put(n, newStates.get(n));
         }
     }
 
-    void tryToRead(String reader) {
+    void tryToRead() {
+        // This is called on the named thread of the reader.
+        String n = Thread.currentThread().getName();
+
+        // We manually open the instance
+        CardTerminal t = readers.get();
+        if (t == null) {
+            t = LoggingCardTerminal.getInstance(manager.getTerminal(n));
+            readers.set(t);
+        }
+
         Card c = null;
         try {
             // Try to get exclusive access for a second
-            c = manager.getTerminal(reader).connect("EXCLUSIVE;*");
-            Optional<String> url = getURL(new APDUBIBO(CardBIBO.wrap(c)));
+            // c = LoggingCardTerminal.getInstance(manager.getTerminal(reader)).connect("EXCLUSIVE;*");
+            c = t.connect("EXCLUSIVE;*");
+            // get UID
+            APDUBIBO b = new APDUBIBO(CardBIBO.wrap(c));
+            var uid = CardCommands.getUID(b);
+            var type2 = CardCommands.getType2(b);
+            var url = CardCommands.getType4(b);
             log.info("Read URL: {}", url);
+
+            // If URL present, open it, otherwise open UID url if present.
             url.ifPresent(this::onUrl);
+
+
         } catch (Exception e) {
-            log.error("Could not connect to or read from " + reader, e);
+            log.error("Could not connect to or read: " + e.getMessage(), e);
         } finally {
             if (c != null)
                 try {
@@ -143,44 +183,6 @@ public class Main extends Application implements PCSCMonitor {
     @Override
     public void readerListErrored(Throwable throwable) {
         System.out.println("PC/SC Error: " + throwable.getMessage());
-    }
-
-    Optional<String> getURL(APDUBIBO bibo) {
-        ResponseAPDU select = bibo.transceive(new CommandAPDU(0x00, 0xA4, 0x04, 0x00, NDEF_AID, 256));
-        if (select.getSW() == 0x9000) {
-            ResponseAPDU cap = bibo.transceive(new CommandAPDU(0x00, 0xA4, 0x00, 0x0C, HexUtils.hex2bin("e103")));
-            if (cap.getSW() == 0x9000) {
-                // Capabilities
-                ResponseAPDU read = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x00, 0x0F));
-
-                int maxReadSize = getShort(read.getData(), (short) 3);
-                int payloadSize = getShort(read.getData(), (short) 11);
-
-                ResponseAPDU selectDATA = bibo.transceive(new CommandAPDU(0x00, 0xA4, 0x00, 0x0C, HexUtils.hex2bin("e104")));
-                if (selectDATA.getSW() == 0x9000) {
-                    final byte[] payload;
-                    if (payloadSize > maxReadSize) { // XXX: assumes that not that big
-                        byte[] chunk1 = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x00, maxReadSize)).getData();
-                        byte[] chunk2 = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, maxReadSize, payloadSize - maxReadSize)).getData();
-                        payload = concatenate(chunk1, chunk2);
-                    } else {
-                        payload = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x00, 256)).getData();
-                    }
-                    // FIXME: https only
-                    log.info("Payload: " + HexUtils.bin2hex(payload));
-                    final String urlString;
-                    if ((payload[2] & 0x10) == 0x10) {
-                        urlString = "https://" + new String(Arrays.copyOfRange(payload, 7, payload.length));
-                    } else {
-                        urlString = "https://" + new String(Arrays.copyOfRange(payload, 10, payload.length));
-                    }
-                    return Optional.of(urlString);
-                }
-            }
-        } else {
-            log.debug("SELECT NDEF was not 0x9000");
-        }
-        return Optional.empty();
     }
 
     public static short getShort(byte[] bArray, short bOff) throws ArrayIndexOutOfBoundsException, NullPointerException {
@@ -212,4 +214,11 @@ public class Main extends Application implements PCSCMonitor {
         return result;
     }
 
+
+    public static void main(String[] args) {
+        byte[] v = HexUtils.hex2bin("0312D1010E55046B7962657270756E6B2E6E6574FE000000000000000000000000000000000000000000000000000000000000000000000000000000");
+        BerTlvParser parser = new BerTlvParser();
+        BerTlvs result = parser.parse(v);
+        System.out.println(result);
+    }
 }
