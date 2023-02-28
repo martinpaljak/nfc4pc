@@ -4,8 +4,6 @@ import apdu4j.core.*;
 import apdu4j.pcsc.*;
 import apdu4j.pcsc.terminals.LoggingCardTerminal;
 import com.dustinredmond.fxtrayicon.FXTrayIcon;
-import com.payneteasy.tlv.BerTlvParser;
-import com.payneteasy.tlv.BerTlvs;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.stage.Stage;
@@ -20,12 +18,13 @@ import javax.smartcardio.CardTerminal;
 import java.awt.*;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.*;
 
-public class Main extends Application implements PCSCMonitor {
-    static final Logger log = LoggerFactory.getLogger(Main.class);
+public class NFC4PC extends Application implements PCSCMonitor {
+    static final Logger log = LoggerFactory.getLogger(NFC4PC.class);
 
     // D2760000850101
     static final byte[] NDEF_AID = new byte[]{(byte) 0xD2, (byte) 0x76, (byte) 0x00, (byte) 0x00, (byte) 0x85, (byte) 0x01, (byte) 0x01};
@@ -34,14 +33,18 @@ public class Main extends Application implements PCSCMonitor {
     private final TerminalManager manager = TerminalManager.getDefault();
     private final Thread pcscMonitor = new Thread(new HandyTerminalsMonitor(manager, this));
 
-    ConcurrentHashMap<String, ExecutorService> readerThreads = new ConcurrentHashMap<>();
-
+    // CardTerminal instance is kept per thread.
+    private ConcurrentHashMap<String, ExecutorService> readerThreads = new ConcurrentHashMap<>();
     static ThreadLocal<CardTerminal> readers = ThreadLocal.withInitial(() -> null);
 
+    private static String uidurl;
+
+    // This is a fun exercise, we have a thread per reader and use the thread name for logging as well as reader access.
     void onReaderThread(String name, Runnable r) {
         readerThreads.computeIfAbsent(name, (n) -> Executors.newSingleThreadExecutor(new NamedReaderThreadFactory(n))).submit(r);
     }
 
+    // ThreadFactory with single purpose: makes threds with a given name.
     static final class NamedReaderThreadFactory implements ThreadFactory {
         final String n;
 
@@ -50,7 +53,9 @@ public class Main extends Application implements PCSCMonitor {
         }
 
         public Thread newThread(Runnable r) {
-            return new Thread(r, n);
+            Thread t = new Thread(r, n);
+            t.setDaemon(true);
+            return t;
         }
     }
 
@@ -113,6 +118,9 @@ public class Main extends Application implements PCSCMonitor {
     public static void main(OptionSet opts, Thread theHook) {
         // normal exit via menu removes hook
         shutdownHook = theHook;
+        if (opts.has(CommandLine.OPT_UID_URL)) {
+            uidurl = opts.valueOf(CommandLine.OPT_UID_URL);
+        }
         launch();
     }
 
@@ -160,14 +168,28 @@ public class Main extends Application implements PCSCMonitor {
             // get UID
             APDUBIBO b = new APDUBIBO(CardBIBO.wrap(c));
             var uid = CardCommands.getUID(b);
-            var type2 = CardCommands.getType2(b);
-            var url = CardCommands.getType4(b);
-            log.info("Read URL: {}", url);
+            if (uid.isEmpty()) {
+                log.warn("Assuming not a contactless reader/device");
+                return;
+            }
+            var uidstring = HexUtils.bin2hex(uid.get());
 
-            // If URL present, open it, otherwise open UID url if present.
-            url.ifPresent(this::onUrl);
+            // Type 2 > Type 4
+            var url = CardCommands.getType2(b).or(() -> CardCommands.getType4(b));
 
-
+            // If URL is present, open it, otherwise open UID url if present.
+            if (url.isPresent()) {
+                String urlstring = CardCommands.msg2url(url.get());
+                log.info("Opening NDEF URL {}", urlstring);
+                onUrl(urlstring);
+            } else if (uidurl != null) {
+                String urlstring = appendUri(uidurl, "uid", uidstring).toString();
+                log.info("Opening UID URL {}", urlstring);
+                onUrl(urlstring);
+            } else {
+                log.info("No url on {}", uidstring);
+                Platform.runLater(() -> icon.showInfoMessage("No URL", "No action detected for " + uidstring));
+            }
         } catch (Exception e) {
             log.error("Could not connect to or read: " + e.getMessage(), e);
         } finally {
@@ -214,11 +236,9 @@ public class Main extends Application implements PCSCMonitor {
         return result;
     }
 
-
-    public static void main(String[] args) {
-        byte[] v = HexUtils.hex2bin("0312D1010E55046B7962657270756E6B2E6E6574FE000000000000000000000000000000000000000000000000000000000000000000000000000000");
-        BerTlvParser parser = new BerTlvParser();
-        BerTlvs result = parser.parse(v);
-        System.out.println(result);
+    public static URI appendUri(String uri, String key, String value) throws URISyntaxException {
+        URI oldUri = new URI(uri);
+        String append = key + "=" + value;
+        return new URI(oldUri.getScheme(), oldUri.getAuthority(), oldUri.getPath(), oldUri.getQuery() == null ? append : oldUri.getQuery() + "&" + append, oldUri.getFragment());
     }
 }

@@ -31,7 +31,7 @@ javafx {
 
 
 application {
-    mainClassName = "$moduleName/pro.javacard.nfc4pc.MainWrapper"
+    mainClass = "$moduleName/pro.javacard.nfc4pc.MainWrapper"
     mainModule = "pro.javacard.nfc4pc"
 }
 
