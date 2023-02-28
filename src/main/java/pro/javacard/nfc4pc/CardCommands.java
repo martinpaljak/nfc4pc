@@ -102,11 +102,19 @@ public class CardCommands {
         log.debug("Parsing {}", HexUtils.bin2hex(payload));
 
         final byte[] record;
+
+        if (payload[3] != 0x01) {
+            throw new IllegalArgumentException("TNF length is not 1");
+        }
         // Short record
         if ((payload[2] & 0x10) == 0x10) {
+            if (payload[5] != 0x55)
+                throw new IllegalArgumentException("Unsupported TNF");
             int len = payload[4] & 0xFF;
             record = Arrays.copyOfRange(payload, 6, 6 + len);
         } else {
+            if (payload[8] != 0x55)
+                throw new IllegalArgumentException("Unsupported TNF");
             ByteBuffer buffer = ByteBuffer.wrap(payload);
             buffer.order(ByteOrder.BIG_ENDIAN);
             int len = buffer.getInt(4);
