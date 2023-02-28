@@ -102,6 +102,7 @@ public class CardCommands {
         log.debug("Parsing {}", HexUtils.bin2hex(payload));
 
         final byte[] record;
+        // Short record
         if ((payload[2] & 0x10) == 0x10) {
             int len = payload[4] & 0xFF;
             record = Arrays.copyOfRange(payload, 6, 6 + len);

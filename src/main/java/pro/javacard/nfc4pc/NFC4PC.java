@@ -179,9 +179,13 @@ public class NFC4PC extends Application implements PCSCMonitor {
 
             // If URL is present, open it, otherwise open UID url if present.
             if (url.isPresent()) {
-                String urlstring = CardCommands.msg2url(url.get());
-                log.info("Opening NDEF URL {}", urlstring);
-                onUrl(urlstring);
+                try {
+                    String urlstring = CardCommands.msg2url(url.get());
+                    log.info("Opening NDEF URL {}", urlstring);
+                    onUrl(urlstring);
+                } catch (IllegalArgumentException e) {
+                    Platform.runLater(() -> icon.showInfoMessage("Unsupported message", "Unsupported message on " + uidstring));
+                }
             } else if (uidurl != null) {
                 String urlstring = appendUri(uidurl, "uid", uidstring).toString();
                 log.info("Opening UID URL {}", urlstring);
