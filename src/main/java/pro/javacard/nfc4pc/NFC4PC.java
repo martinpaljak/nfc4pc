@@ -6,9 +6,9 @@ import apdu4j.pcsc.terminals.LoggingCardTerminal;
 import com.dustinredmond.fxtrayicon.FXTrayIcon;
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.scene.control.MenuItem;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
-import joptsimple.OptionSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,6 +19,8 @@ import java.awt.*;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.*;
@@ -37,14 +39,17 @@ public class NFC4PC extends Application implements PCSCMonitor {
     private ConcurrentHashMap<String, ExecutorService> readerThreads = new ConcurrentHashMap<>();
     static ThreadLocal<CardTerminal> readers = ThreadLocal.withInitial(() -> null);
 
-    private static String uidurl;
+    private static Thread shutdownHook;
+    private static boolean headless;
+
+    private static RuntimeConfig conf;
 
     // This is a fun exercise, we have a thread per reader and use the thread name for logging as well as reader access.
     void onReaderThread(String name, Runnable r) {
         readerThreads.computeIfAbsent(name, (n) -> Executors.newSingleThreadExecutor(new NamedReaderThreadFactory(n))).submit(r);
     }
 
-    // ThreadFactory with single purpose: makes threds with a given name.
+    // ThreadFactory with single purpose: makes threads with a given name.
     static final class NamedReaderThreadFactory implements ThreadFactory {
         final String n;
 
@@ -60,21 +65,47 @@ public class NFC4PC extends Application implements PCSCMonitor {
     }
 
     private FXTrayIcon icon;
-    private static Thread shutdownHook;
 
     private Map<String, Boolean> readerStates = new HashMap<>();
+
+    // GUI option
+    private void setTooltip() {
+        String msg = String.format("NFC4PC: %d actions for %d taps", MainWrapper.urlCounter.get() + MainWrapper.uidCounter.get() + MainWrapper.metaCounter.get() + MainWrapper.webhookCounter.get(), MainWrapper.tapCounter.get());
+        if (headless) {
+            System.out.println(msg);
+        } else {
+            icon.setTrayIconTooltip(msg);
+        }
+    }
+
+    private void notifyUser(String title, String message) {
+        if (headless) {
+            System.out.println(title + ": " + message);
+        } else {
+            Platform.runLater(() -> icon.showInfoMessage(title, message));
+        }
+    }
+
 
     @Override
     public void start(Stage primaryStage) throws Exception {
         // FIXME: first "similar from Google"
         icon = new FXTrayIcon(primaryStage, Objects.requireNonNull(getClass().getResource("icon.png")));
-        icon.addExitItem("Exit NFC4PC", (event) -> {
+        icon.addExitItem("Exit", (event) -> {
             System.out.println("Exiting");
-            Runtime.getRuntime().removeShutdownHook(shutdownHook);
-            MainWrapper.sendStatistics().run(); // Blocks
+            if (shutdownHook != null)
+                Runtime.getRuntime().removeShutdownHook(shutdownHook);
+            MainWrapper.sendStatistics();
             Platform.exit(); // shutdown
             System.exit(0); // Exit
         });
+
+        MenuItem about = new MenuItem("About NFC4PC");
+        about.setOnAction((e) -> {
+            openUrl(URI.create("https://github.com/martinpaljak/NFC4PC/wiki"));
+        });
+        icon.addMenuItem(about);
+        setTooltip();
         // No UI other than tray
         primaryStage.initStyle(StageStyle.TRANSPARENT);
         icon.show();
@@ -82,6 +113,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
 
     @Override
     public void init() throws Exception {
+        // Start monitoring thread
         pcscMonitor.setDaemon(true);
         pcscMonitor.setName("PC/SC monitor");
         pcscMonitor.start();
@@ -92,36 +124,15 @@ public class NFC4PC extends Application implements PCSCMonitor {
         pcscMonitor.interrupt();
     }
 
-    public void onUrl(String url) {
-        // Called on reader thread
-        log.debug("Opening URL " + url);
-
-        // Increase counter for statistics
-        MainWrapper.counter.incrementAndGet();
-
-        // Show notification
-        Platform.runLater(() -> icon.showInfoMessage("Opening", url));
-
-        // Launch browser
-        try {
-            Desktop desktop = Desktop.getDesktop();
-            if (desktop.isSupported(Desktop.Action.BROWSE)) {
-                desktop.browse(URI.create(url));
-            } else {
-                // report error
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
+    public static void main(RuntimeConfig config, Thread shutdownHook, boolean headless) {
+        // Normal exit via menu removes hook
+        NFC4PC.shutdownHook = shutdownHook;
+        NFC4PC.headless = headless;
+        NFC4PC.conf = config;
+        if (!headless) {
+            // Icon, thank you
+            launch();
         }
-    }
-
-    public static void main(OptionSet opts, Thread theHook) {
-        // normal exit via menu removes hook
-        shutdownHook = theHook;
-        if (opts.has(CommandLine.OPT_UID_URL)) {
-            uidurl = opts.valueOf(CommandLine.OPT_UID_URL);
-        }
-        launch();
     }
 
     @Override
@@ -132,15 +143,10 @@ public class NFC4PC extends Application implements PCSCMonitor {
 
         for (String n : newStates.keySet()) {
             if (newStates.get(n) && !readerStates.getOrDefault(n, false)) {
-                log.debug("Detected change in reader " + n);
-                // Windows needs a bit of time TODO: add loop
-                if (com.sun.jna.Platform.isWindows()) {
-                    try {
-                        Thread.sleep(300);
-                    } catch (InterruptedException e) {
-                        log.debug("Interrupted");
-                    }
-                }
+                log.debug("Detected change in reader \"{}\"", n);
+                MainWrapper.tapCounter.incrementAndGet();
+                setTooltip();
+
                 // Try to read
                 onReaderThread(n, this::tryToRead);
             }
@@ -149,10 +155,84 @@ public class NFC4PC extends Application implements PCSCMonitor {
         }
     }
 
+    static String uid2str(byte[] uid) {
+        return HexUtils.bin2hex(uid);
+    }
+
+    void openUrl(URI uri) {
+        try {
+            Desktop desktop = Desktop.getDesktop();
+            if (desktop != null && desktop.isSupported(Desktop.Action.BROWSE)) {
+                desktop.browse(uri);
+            } else {
+                // report error
+                log.error("No desktop?");
+                System.exit(1);
+            }
+        } catch (IOException e) {
+            log.error("Could not launch URL: " + e.getMessage(), e);
+        }
+    }
+
+
+    void onTap(String reader, byte[] uid, String url) {
+        try {
+            if (conf.webhook().isPresent()) {
+                LinkedHashMap<String, String> payload = new LinkedHashMap<>();
+                payload.put("uid", uid2str(uid));
+                if (url != null)
+                    payload.put("url", url);
+                MainWrapper.webhookCounter.incrementAndGet();
+                try {
+                    if (!WebHooks.post(conf.webhook().get(), payload, conf.auth().orElse(null)).call()) {
+                        notifyUser(reader, "Failed to post webhook to " + conf.webhook().get());
+                    }
+                } catch (Exception e) {
+                    notifyUser(reader, "Failed to post webhook to " + conf.webhook().get());
+                }
+            } else {
+                // Open
+                if (conf.meta().isPresent()) {
+                    MainWrapper.metaCounter.incrementAndGet();
+                    URI target = appendUri(conf.meta().get(), "uid", uid2str(uid));
+                    if (url != null) {
+                        target = appendUri(target, "url", URLEncoder.encode(url, StandardCharsets.UTF_8));
+                    }
+                    openUrl(target);
+                } else {
+                    if (url == null) {
+                        if (conf.uid().isPresent()) {
+                            MainWrapper.uidCounter.incrementAndGet();
+                            openUrl(appendUri(conf.uid().get(), "uid", uid2str(uid)));
+                        } else {
+                            notifyUser(reader, "No action for UID: " + uid2str(uid));
+                        }
+                    } else {
+                        // Standard NDEF URL
+                        MainWrapper.urlCounter.incrementAndGet();
+                        openUrl(URI.create(url));
+                    }
+                }
+            }
+        } catch (URISyntaxException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
     void tryToRead() {
         // This is called on the named thread of the reader.
         String n = Thread.currentThread().getName();
 
+        // Windows needs a bit of time TODO: add loop
+        if (com.sun.jna.Platform.isWindows()) {
+            try {
+                log.debug("Windows. Sleeping 300ms");
+                Thread.sleep(300);
+            } catch (InterruptedException e) {
+                log.debug("Interrupted");
+            }
+        }
         // We manually open the instance
         CardTerminal t = readers.get();
         if (t == null) {
@@ -177,25 +257,18 @@ public class NFC4PC extends Application implements PCSCMonitor {
             // Type 2 > Type 4
             var url = CardCommands.getType2(b).or(() -> CardCommands.getType4(b));
 
-            // If URL is present, open it, otherwise open UID url if present.
-            if (url.isPresent()) {
+            String location = null;
+            if (url.isPresent())
                 try {
-                    String urlstring = CardCommands.msg2url(url.get());
-                    log.info("Opening NDEF URL {}", urlstring);
-                    onUrl(urlstring);
+                    // TODO: detect unknown payload. TODO: warn if smart poster
+                    location = CardCommands.msg2url(url.get());
                 } catch (IllegalArgumentException e) {
-                    Platform.runLater(() -> icon.showInfoMessage("Unsupported message", "Unsupported message on " + uidstring));
+                    notifyUser(n, "Could not parse message etc");
                 }
-            } else if (uidurl != null) {
-                String urlstring = appendUri(uidurl, "uid", uidstring).toString();
-                log.info("Opening UID URL {}", urlstring);
-                onUrl(urlstring);
-            } else {
-                log.info("No url on {}", uidstring);
-                Platform.runLater(() -> icon.showInfoMessage("No URL", "No action detected for " + uidstring));
-            }
+            onTap(n, uid.get(), location);
         } catch (Exception e) {
             log.error("Could not connect to or read: " + e.getMessage(), e);
+            notifyUser(n, "Could not read: " + SCard.getExceptionMessage(e));
         } finally {
             if (c != null)
                 try {
@@ -206,9 +279,10 @@ public class NFC4PC extends Application implements PCSCMonitor {
         }
     }
 
+
     @Override
     public void readerListErrored(Throwable throwable) {
-        System.out.println("PC/SC Error: " + throwable.getMessage());
+        System.err.println("PC/SC Error: " + throwable.getMessage());
     }
 
     public static short getShort(byte[] bArray, short bOff) throws ArrayIndexOutOfBoundsException, NullPointerException {
@@ -244,5 +318,16 @@ public class NFC4PC extends Application implements PCSCMonitor {
         URI oldUri = new URI(uri);
         String append = key + "=" + value;
         return new URI(oldUri.getScheme(), oldUri.getAuthority(), oldUri.getPath(), oldUri.getQuery() == null ? append : oldUri.getQuery() + "&" + append, oldUri.getFragment());
+    }
+
+    public static URI appendUri(URI oldUri, String key, String value) throws URISyntaxException {
+        String append = key + "=" + value;
+        // NOTE: things get URLEncoded
+        return new URI(oldUri.getScheme(), oldUri.getAuthority(), oldUri.getPath(), oldUri.getQuery() == null ? append : oldUri.getQuery() + "&" + append, oldUri.getFragment());
+    }
+
+    // Wait until PC/SC monitor exits
+    void waitOnThread() throws InterruptedException {
+        pcscMonitor.join();
     }
 }

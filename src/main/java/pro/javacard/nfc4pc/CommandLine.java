@@ -6,14 +6,21 @@ import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
 
 import java.io.IOException;
+import java.net.URI;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
-public class CommandLine {
-    static OptionParser parser = new OptionParser();
+public abstract class CommandLine {
+    static final OptionParser parser = new OptionParser();
     protected static OptionSpec<Void> OPT_VERSION = parser.acceptsAll(Arrays.asList("V", "version"), "Show information about the program");
     protected static OptionSpec<Void> OPT_HELP = parser.acceptsAll(Arrays.asList("h", "?", "help"), "Shows this help").forHelp();
-    protected static OptionSpec<String> OPT_UID_URL = parser.acceptsAll(Arrays.asList("U", "uid-url"), "Launch UID-s at given URL").withRequiredArg();
+    protected static OptionSpec<URI> OPT_UID_URL = parser.acceptsAll(Arrays.asList("U", "uid-url"), "Launch UID-s at given URL").withRequiredArg().ofType(URI.class);
+    protected static OptionSpec<URI> OPT_WEBHOOK = parser.acceptsAll(Arrays.asList("w", "webhook"), "Post data to webhook").withRequiredArg().ofType(URI.class);
+    protected static OptionSpec<URI> OPT_META_URL = parser.acceptsAll(Arrays.asList("M", "meta-url"), "Launch URL-s at given URL").availableUnless(OPT_WEBHOOK, OPT_UID_URL).withRequiredArg().ofType(URI.class);
+    protected static OptionSpec<Void> OPT_NO_GUI = parser.acceptsAll(Arrays.asList("no-gui"), "Run without GUI");
+
+    protected static OptionSpec<Void> OPT_HEADLESS = parser.acceptsAll(Arrays.asList("headless"), "Run in headless (webhook-only) mode").availableIf(OPT_WEBHOOK);
+    protected static OptionSpec<String> OPT_AUTHORIZATION = parser.acceptsAll(Arrays.asList("auhtorization"), "Authorization header").availableIf(OPT_WEBHOOK).withRequiredArg();
 
 
     protected static OptionSet parseArguments(String[] argv) throws IOException {

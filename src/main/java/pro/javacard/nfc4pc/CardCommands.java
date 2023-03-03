@@ -65,7 +65,7 @@ public class CardCommands {
                             return Optional.empty();
                         }
                     }
-                    return Optional.of(payload.toByteArray());
+                    return Optional.of(type2_to_message(payload.toByteArray()));
                 } else {
                     log.warn("Invalid capability block: {}", HexUtils.bin2hex(init));
                 }
@@ -96,29 +96,37 @@ public class CardCommands {
         }
     }
 
-    static String msg2url(byte[] payload) {
+    static byte[] type2_to_message(byte[] payload) {
         // Type 2: tag 03 with lentgh, so offset 2
+        return Arrays.copyOfRange(payload, 2, payload.length);
+    }
+
+    static byte[] type4_to_message(byte[] payload) {
         // Type 4: short with length, so offset 2
+        return Arrays.copyOfRange(payload, 2, payload.length);
+    }
+
+    static String msg2url(byte[] payload) {
         log.debug("Parsing {}", HexUtils.bin2hex(payload));
 
         final byte[] record;
 
-        if (payload[3] != 0x01) {
+        if (payload[1] != 0x01) {
             throw new IllegalArgumentException("TNF length is not 1");
         }
         // Short record
-        if ((payload[2] & 0x10) == 0x10) {
-            if (payload[5] != 0x55)
+        if ((payload[0] & 0x10) == 0x10) {
+            if (payload[3] != 0x55)
                 throw new IllegalArgumentException("Unsupported TNF");
-            int len = payload[4] & 0xFF;
-            record = Arrays.copyOfRange(payload, 6, 6 + len);
+            int len = payload[2] & 0xFF;
+            record = Arrays.copyOfRange(payload, 4, 4 + len);
         } else {
-            if (payload[8] != 0x55)
+            if (payload[6] != 0x55)
                 throw new IllegalArgumentException("Unsupported TNF");
             ByteBuffer buffer = ByteBuffer.wrap(payload);
             buffer.order(ByteOrder.BIG_ENDIAN);
-            int len = buffer.getInt(4);
-            record = Arrays.copyOfRange(payload, 9, 9 + len);
+            int len = buffer.getInt(2);
+            record = Arrays.copyOfRange(payload, 7, 7 + len);
         }
         return record2url(record);
     }
@@ -138,17 +146,23 @@ public class CardCommands {
 
                     ResponseAPDU selectDATA = bibo.transceive(new CommandAPDU(0x00, 0xA4, 0x00, 0x0C, HexUtils.hex2bin("e104")));
                     if (selectDATA.getSW() == 0x9000) {
-                        final byte[] payload;
-                        if (payloadSize > maxReadSize) { // XXX: assumes that not that big
-                            byte[] chunk1 = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x00, maxReadSize)).getData();
-                            byte[] chunk2 = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, maxReadSize, payloadSize - maxReadSize)).getData();
-                            payload = NFC4PC.concatenate(chunk1, chunk2);
-                        } else {
-                            payload = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x00, 256)).getData();
+                        ResponseAPDU len = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x00, 0x02));
+                        int reportedLen = NFC4PC.getShort(len.getData(), (short)0);
+                        if ((reportedLen +2) != payloadSize) {
+                            log.error("Warning: payload length mismatch");
                         }
-                        // FIXME: https only
-                        log.info("Payload: " + HexUtils.bin2hex(payload));
-                        return Optional.of(payload);
+                        if (len.getSW() == 0x9000) {
+                            final byte[] payload;
+                            if (reportedLen > maxReadSize) { // XXX: assumes that not that big
+                                byte[] chunk1 = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x02, maxReadSize)).getData();
+                                byte[] chunk2 = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, maxReadSize + 2, reportedLen - maxReadSize)).getData();
+                                payload = NFC4PC.concatenate(chunk1, chunk2);
+                            } else {
+                                payload = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x02, reportedLen)).getData();
+                            }
+                            log.info("Payload: " + HexUtils.bin2hex(payload));
+                            return Optional.of(payload);
+                        }
                     }
                 }
             } else {
