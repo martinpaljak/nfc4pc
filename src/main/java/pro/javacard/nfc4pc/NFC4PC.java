@@ -143,9 +143,11 @@ public class NFC4PC extends Application implements PCSCMonitor {
         Map<String, Boolean> newStates = new HashMap<>();
         list.forEach(e -> newStates.put(e.getName(), e.isPresent()));
 
-        for (String n : newStates.keySet()) {
-            // TODO: ignore exclusive readers
-            if (newStates.get(n) && !readerStates.getOrDefault(n, false)) {
+        for (PCSCReader e : list) {
+            String n = e.getName();
+            if (e.isExclusive()) {
+                log.debug("Ignoring exclusively in use reader \"{}\"", n);
+            } else if (newStates.get(n) && !readerStates.getOrDefault(n, false)) {
                 log.debug("Detected change in reader \"{}\"", n);
                 MainWrapper.tapCounter.incrementAndGet();
                 setTooltip();
