@@ -74,7 +74,9 @@ public class NFC4PC extends Application implements PCSCMonitor {
         if (headless) {
             System.out.println(msg);
         } else {
-            icon.setTrayIconTooltip(msg);
+            // Called from init, thus can be null
+            if (icon != null)
+                icon.setTrayIconTooltip(msg);
         }
     }
 
@@ -142,6 +144,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
         list.forEach(e -> newStates.put(e.getName(), e.isPresent()));
 
         for (String n : newStates.keySet()) {
+            // TODO: ignore exclusive readers
             if (newStates.get(n) && !readerStates.getOrDefault(n, false)) {
                 log.debug("Detected change in reader \"{}\"", n);
                 MainWrapper.tapCounter.incrementAndGet();
@@ -259,6 +262,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
                 }
             onTap(n, uid.get(), location);
         } catch (Exception e) {
+            // TODO: notifiy exclusively opened readers
             log.error("Could not connect to or read: " + e.getMessage(), e);
             notifyUser(n, "Could not read: " + SCard.getExceptionMessage(e));
         } finally {
