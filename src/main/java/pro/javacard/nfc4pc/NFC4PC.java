@@ -224,15 +224,6 @@ public class NFC4PC extends Application implements PCSCMonitor {
         // This is called on the named thread of the reader.
         String n = Thread.currentThread().getName();
 
-        // Windows needs a bit of time TODO: add loop
-        if (com.sun.jna.Platform.isWindows()) {
-            try {
-                log.debug("Windows. Sleeping 300ms");
-                Thread.sleep(300);
-            } catch (InterruptedException e) {
-                log.debug("Interrupted");
-            }
-        }
         // We manually open the instance
         CardTerminal t = readers.get();
         if (t == null) {
@@ -244,7 +235,8 @@ public class NFC4PC extends Application implements PCSCMonitor {
         try {
             // Try to get exclusive access for a second
             // c = LoggingCardTerminal.getInstance(manager.getTerminal(reader)).connect("EXCLUSIVE;*");
-            c = t.connect("EXCLUSIVE;*");
+            c = t.connect("*");
+            c.beginExclusive();
             // get UID
             APDUBIBO b = new APDUBIBO(CardBIBO.wrap(c));
             var uid = CardCommands.getUID(b);
