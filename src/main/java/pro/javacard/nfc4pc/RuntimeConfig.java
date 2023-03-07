@@ -4,10 +4,10 @@ import java.net.URI;
 import java.util.Optional;
 
 public class RuntimeConfig {
-    private URI uidurl;
-    private URI metaurl;
-    private URI webhookurl;
-    private String authorization;
+    private final URI uidurl;
+    private final URI metaurl;
+    private final URI webhookurl;
+    private final String authorization;
 
     public RuntimeConfig(URI uidurl, URI metaurl, URI webhookurl, String authorization) {
         this.uidurl = uidurl;

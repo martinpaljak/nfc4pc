@@ -1,6 +1,7 @@
 package pro.javacard.nfc4pc;
 
-import apdu4j.core.*;
+import apdu4j.core.APDUBIBO;
+import apdu4j.core.HexUtils;
 import apdu4j.pcsc.*;
 import apdu4j.pcsc.terminals.LoggingCardTerminal;
 import com.dustinredmond.fxtrayicon.FXTrayIcon;
@@ -21,9 +22,12 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 
 public class NFC4PC extends Application implements PCSCMonitor {
     static final Logger log = LoggerFactory.getLogger(NFC4PC.class);
@@ -36,7 +40,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
     private final Thread pcscMonitor = new Thread(new HandyTerminalsMonitor(manager, this));
 
     // CardTerminal instance is kept per thread.
-    private ConcurrentHashMap<String, ExecutorService> readerThreads = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, ExecutorService> readerThreads = new ConcurrentHashMap<>();
     static ThreadLocal<CardTerminal> readers = ThreadLocal.withInitial(() -> null);
 
     private static Thread shutdownHook;
@@ -66,7 +70,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
 
     private FXTrayIcon icon;
 
-    private Map<String, Boolean> readerStates = new HashMap<>();
+    private final Map<String, Boolean> readerStates = new HashMap<>();
 
     // GUI option
     private void setTooltip() {

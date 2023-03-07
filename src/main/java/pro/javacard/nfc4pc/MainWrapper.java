@@ -74,16 +74,13 @@ public class MainWrapper extends CommandLine {
     private static boolean hasUI() {
         System.setProperty("apple.awt.UIElement", "true");
         Toolkit tk = java.awt.Toolkit.getDefaultToolkit();
-        if (tk == null || tk.getClass().getSimpleName().equals("HeadlessToolkit")) {
-            return false;
-        }
-        return true;
+        return tk != null && !tk.getClass().getSimpleName().equals("HeadlessToolkit");
     }
 
 
     static void sendStatistics() {
         HashMap<String, String> p = new HashMap<>();
-        for (String s: Arrays.asList("os.name", "os.version", "os.arch", "java.version", "java.vendor")) {
+        for (String s : Arrays.asList("os.name", "os.version", "os.arch", "java.version", "java.vendor")) {
             p.put(s, System.getProperty(s, "unknown"));
         }
         p.put("tap", String.valueOf(tapCounter.get()));

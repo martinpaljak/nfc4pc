@@ -147,8 +147,8 @@ public class CardCommands {
                     ResponseAPDU selectDATA = bibo.transceive(new CommandAPDU(0x00, 0xA4, 0x00, 0x0C, HexUtils.hex2bin("e104")));
                     if (selectDATA.getSW() == 0x9000) {
                         ResponseAPDU len = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x00, 0x02));
-                        int reportedLen = NFC4PC.getShort(len.getData(), (short)0);
-                        if ((reportedLen +2) != payloadSize) {
+                        int reportedLen = NFC4PC.getShort(len.getData(), (short) 0);
+                        if ((reportedLen + 2) != payloadSize) {
                             log.error("Warning: payload length mismatch");
                         }
                         if (len.getSW() == 0x9000) {
