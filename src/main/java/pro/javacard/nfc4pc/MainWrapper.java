@@ -26,8 +26,6 @@ public class MainWrapper extends CommandLine {
         });
 
         try {
-            System.out.printf("Running with Java %s on %s %s by %s%n", System.getProperty("java.version"), System.getProperty("os.name"), System.getProperty("os.arch"), System.getProperty("java.vendor"));
-
             OptionSet opts = null;
             try {
                 opts = CommandLine.parseArguments(args);
@@ -36,8 +34,8 @@ public class MainWrapper extends CommandLine {
             }
             boolean ui = hasUI();
 
-            if (!ui && !opts.has(CommandLine.OPT_WEBHOOK)) {
-                fail("No desktop available, must run with --webhook");
+            if (!ui && !(opts.has(CommandLine.OPT_WEBHOOK) || opts.has(OPT_GET))) {
+                fail("No desktop available, must run with --webhook or -g/--get");
             }
 
             if (opts.has(CommandLine.OPT_WEBHOOK))
@@ -49,7 +47,7 @@ public class MainWrapper extends CommandLine {
 
             Runtime.getRuntime().addShutdownHook(t);
 
-            boolean headless = opts.has(CommandLine.OPT_NO_GUI) || opts.has(CommandLine.OPT_HEADLESS);
+            boolean headless = opts.has(CommandLine.OPT_NO_GUI) || opts.has(CommandLine.OPT_HEADLESS) || opts.has(OPT_GET);
 
             RuntimeConfig conf = new RuntimeConfig(opts.valueOf(OPT_UID_URL), opts.valueOf(OPT_META_URL), opts.valueOf(OPT_WEBHOOK), opts.valueOf(OPT_AUTHORIZATION));
             // XXX

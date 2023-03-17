@@ -76,7 +76,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
     private void setTooltip() {
         String msg = String.format("NFC4PC: %d actions for %d taps", MainWrapper.urlCounter.get() + MainWrapper.uidCounter.get() + MainWrapper.metaCounter.get() + MainWrapper.webhookCounter.get(), MainWrapper.tapCounter.get());
         if (headless) {
-            System.out.println(msg);
+            //System.out.println(msg);
         } else {
             // Called from init, thus can be null
             if (icon != null)
@@ -169,6 +169,12 @@ public class NFC4PC extends Application implements PCSCMonitor {
     }
 
     void openUrl(URI uri) {
+        if (headless) {
+            System.out.println(uri);
+            if (shutdownHook != null)
+                Runtime.getRuntime().removeShutdownHook(shutdownHook);
+            System.exit(0);
+        }
         try {
             Desktop desktop = Desktop.getDesktop();
             if (desktop != null && desktop.isSupported(Desktop.Action.BROWSE)) {
@@ -236,7 +242,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
         // We manually open the instance
         CardTerminal t = readers.get();
         if (t == null) {
-            t = LoggingCardTerminal.getInstance(manager.getTerminal(n));
+            t = LoggingCardTerminal.getInstance(manager.getTerminal(n), System.err);
             readers.set(t);
         }
 
@@ -268,7 +274,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
                 }
             onTap(n, uid.get(), location);
         } catch (Exception e) {
-            // TODO: notifiy exclusively opened readers
+            // TODO: notify exclusively opened readers
             log.error("Could not connect to or read: " + e.getMessage(), e);
             notifyUser(n, "Could not read: " + SCard.getExceptionMessage(e));
         } finally {

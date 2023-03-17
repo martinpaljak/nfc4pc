@@ -20,6 +20,8 @@ public abstract class CommandLine {
     protected static OptionSpec<URI> OPT_META_URL = parser.acceptsAll(Arrays.asList("M", "meta-url"), "Launch URL-s at given URL").availableUnless(OPT_WEBHOOK, OPT_UID_URL).withRequiredArg().ofType(URI.class);
     protected static OptionSpec<Void> OPT_NO_GUI = parser.acceptsAll(List.of("no-gui"), "Run without GUI");
 
+    protected static OptionSpec<Void> OPT_GET = parser.acceptsAll(List.of("get"), "Get a URL from command line").availableUnless(OPT_WEBHOOK);
+
     protected static OptionSpec<Void> OPT_HEADLESS = parser.acceptsAll(List.of("headless"), "Run in headless (webhook-only) mode").availableIf(OPT_WEBHOOK);
     protected static OptionSpec<String> OPT_AUTHORIZATION = parser.acceptsAll(List.of("auhtorization"), "Authorization header").availableIf(OPT_WEBHOOK).withRequiredArg();
 
