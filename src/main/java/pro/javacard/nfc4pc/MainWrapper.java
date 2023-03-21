@@ -18,10 +18,11 @@ public class MainWrapper extends CommandLine {
     static AtomicLong metaCounter = new AtomicLong(0); // Atomic so we can have daemon threads reading it for statistics
     static AtomicLong webhookCounter = new AtomicLong(0); // Atomic so we can have daemon threads reading it for statistics
 
+    static boolean debug = false;
     public static void main(String[] args) {
         // Trap ctrl-c and similar signals
         Thread t = new Thread(() -> {
-            System.out.println("Ctrl-C, quitting");
+            System.err.println("Ctrl-C, quitting nfc4pc");
             sendStatistics();
         });
 
@@ -34,16 +35,22 @@ public class MainWrapper extends CommandLine {
             }
             boolean ui = hasUI();
 
+            if (opts.has(OPT_DEBUG)) {
+                debug = true;
+                System.setProperty("org.slf4j.simpleLogger.log.pro.javacard", "debug");
+                System.setProperty("org.slf4j.simpleLogger.log.apdu4j.pcsc", "debug");
+            }
+
             if (!ui && !(opts.has(CommandLine.OPT_WEBHOOK) || opts.has(OPT_GET))) {
                 fail("No desktop available, must run with --webhook or -g/--get");
             }
 
             if (opts.has(CommandLine.OPT_WEBHOOK))
-                System.out.println("Webhook URI: " + opts.valueOf(CommandLine.OPT_WEBHOOK));
+                System.err.println("Webhook URI: " + opts.valueOf(CommandLine.OPT_WEBHOOK));
             if (opts.has(CommandLine.OPT_UID_URL))
-                System.out.println("UID URI: " + opts.valueOf(CommandLine.OPT_UID_URL));
+                System.err.println("UID URI: " + opts.valueOf(CommandLine.OPT_UID_URL));
             if (opts.has(CommandLine.OPT_META_URL))
-                System.out.println("Meta URI: " + opts.valueOf(CommandLine.OPT_META_URL));
+                System.err.println("Meta URI: " + opts.valueOf(CommandLine.OPT_META_URL));
 
             Runtime.getRuntime().addShutdownHook(t);
 

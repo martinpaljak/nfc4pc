@@ -14,6 +14,9 @@ import java.util.stream.Collectors;
 public abstract class CommandLine {
     static final OptionParser parser = new OptionParser();
     protected static OptionSpec<Void> OPT_VERSION = parser.acceptsAll(Arrays.asList("V", "version"), "Show information about the program");
+
+    protected static OptionSpec<Void> OPT_DEBUG = parser.acceptsAll(Arrays.asList("d", "debug"), "Show debugging logs");
+
     protected static OptionSpec<Void> OPT_HELP = parser.acceptsAll(Arrays.asList("h", "?", "help"), "Shows this help").forHelp();
     protected static OptionSpec<URI> OPT_UID_URL = parser.acceptsAll(Arrays.asList("U", "uid-url"), "Launch UID-s at given URL").withRequiredArg().ofType(URI.class);
     protected static OptionSpec<URI> OPT_WEBHOOK = parser.acceptsAll(Arrays.asList("w", "webhook"), "Post data to webhook").withRequiredArg().ofType(URI.class);

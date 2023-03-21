@@ -242,7 +242,10 @@ public class NFC4PC extends Application implements PCSCMonitor {
         // We manually open the instance
         CardTerminal t = readers.get();
         if (t == null) {
-            t = LoggingCardTerminal.getInstance(manager.getTerminal(n), System.err);
+            if (MainWrapper.debug)
+                t = LoggingCardTerminal.getInstance(manager.getTerminal(n), System.err);
+            else
+                t = manager.getTerminal(n);
             readers.set(t);
         }
 
@@ -256,7 +259,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
             APDUBIBO b = new APDUBIBO(CardBIBO.wrap(c));
             var uid = CardCommands.getUID(b);
             if (uid.isEmpty()) {
-                log.warn("Assuming not a contactless reader/device");
+                log.info("Assuming not a contactless reader/device");
                 return;
             }
             var uidstring = HexUtils.bin2hex(uid.get());
