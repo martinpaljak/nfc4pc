@@ -143,6 +143,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
 
     @Override
     public void readerListChanged(List<PCSCReader> list) {
+        boolean firstRun = readerStates.isEmpty();
         // Track changes. PC/SC monitor thread
         Map<String, Boolean> newStates = new HashMap<>();
         list.forEach(e -> newStates.put(e.getName(), e.isPresent()));
@@ -151,7 +152,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
             String n = e.getName();
             if (e.isExclusive()) {
                 log.debug("Ignoring exclusively in use reader \"{}\"", n);
-            } else if (newStates.get(n) && !readerStates.getOrDefault(n, false)) {
+            } else if (newStates.get(n) && !readerStates.getOrDefault(n, false) && ! firstRun) {
                 log.debug("Detected change in reader \"{}\"", n);
                 MainWrapper.tapCounter.incrementAndGet();
                 setTooltip();
