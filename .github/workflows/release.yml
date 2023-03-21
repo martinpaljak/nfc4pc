@@ -1,0 +1,30 @@
+on:
+  push:
+    tags:
+    - 'v*'
+
+name: Release CI
+
+jobs:
+  build:
+    name: Upload release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3.1.0
+      - name: Setup Java
+        uses: actions/setup-java@v3.6.0
+        with:
+          java-version: 11
+          distribution: temurin
+      - name: Package
+        run: ./gradlew jar
+      - name: Release
+        id: create_release
+        uses: softprops/action-gh-release@v0.1.15
+        with:
+          files: |
+            build/libs/nfc4pc-*.jar
+          fail_on_unmatched_files: true
+          body: Release ${{ github.ref_name }}
+          prerelease: true # manually promoted
