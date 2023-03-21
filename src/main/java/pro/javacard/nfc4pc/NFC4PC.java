@@ -35,7 +35,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
     // D2760000850101
     static final byte[] NDEF_AID = new byte[]{(byte) 0xD2, (byte) 0x76, (byte) 0x00, (byte) 0x00, (byte) 0x85, (byte) 0x01, (byte) 0x01};
 
-    // Lets have a thread per reader and a monitoring thread, in addition to the UI thread. Many threads, yay!
+    // Let's have a thread per reader and a monitoring thread, in addition to the UI thread. Many threads, yay!
     private final TerminalManager manager = TerminalManager.getDefault();
     private final Thread pcscMonitor = new Thread(new HandyTerminalsMonitor(manager, this));
 
@@ -45,7 +45,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
 
     private static Thread shutdownHook;
     private static boolean headless;
-
+    private static boolean single = true;
     private static RuntimeConfig conf;
 
     // This is a fun exercise, we have a thread per reader and use the thread name for logging as well as reader access.
@@ -76,7 +76,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
     private void setTooltip() {
         String msg = String.format("NFC4PC: %d actions for %d taps", MainWrapper.urlCounter.get() + MainWrapper.uidCounter.get() + MainWrapper.metaCounter.get() + MainWrapper.webhookCounter.get(), MainWrapper.tapCounter.get());
         if (headless) {
-            //System.out.println(msg);
+            log.info(msg);
         } else {
             // Called from init, thus can be null
             if (icon != null)
@@ -86,7 +86,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
 
     private void notifyUser(String title, String message) {
         if (headless) {
-            System.out.println(title + ": " + message);
+            System.err.println(title + ": " + message);
         } else {
             Platform.runLater(() -> icon.showInfoMessage(title, message));
         }
@@ -98,7 +98,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
         // FIXME: first "similar from Google"
         icon = new FXTrayIcon(primaryStage, Objects.requireNonNull(getClass().getResource("icon.png")));
         icon.addExitItem("Exit", (event) -> {
-            System.out.println("Exiting");
+            System.err.println("Exiting nfc4pc");
             if (shutdownHook != null)
                 Runtime.getRuntime().removeShutdownHook(shutdownHook);
             MainWrapper.sendStatistics();
@@ -130,12 +130,14 @@ public class NFC4PC extends Application implements PCSCMonitor {
         pcscMonitor.interrupt();
     }
 
-    public static void main(RuntimeConfig config, Thread shutdownHook, boolean headless) {
+    public static void main(RuntimeConfig config, Thread shutdownHook, boolean single, boolean showUI) {
         // Normal exit via menu removes hook
         NFC4PC.shutdownHook = shutdownHook;
-        NFC4PC.headless = headless;
+        NFC4PC.headless = !showUI;
         NFC4PC.conf = config;
-        if (!headless) {
+        NFC4PC.single = single;
+
+        if (showUI) {
             // Icon, thank you
             launch();
         }
@@ -143,8 +145,9 @@ public class NFC4PC extends Application implements PCSCMonitor {
 
     @Override
     public void readerListChanged(List<PCSCReader> list) {
-        boolean firstRun = readerStates.isEmpty();
         // Track changes. PC/SC monitor thread
+        boolean firstRun = readerStates.isEmpty(); // Require fresh tap
+
         Map<String, Boolean> newStates = new HashMap<>();
         list.forEach(e -> newStates.put(e.getName(), e.isPresent()));
 
@@ -152,7 +155,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
             String n = e.getName();
             if (e.isExclusive()) {
                 log.debug("Ignoring exclusively in use reader \"{}\"", n);
-            } else if (newStates.get(n) && !readerStates.getOrDefault(n, false) && ! firstRun) {
+            } else if (newStates.get(n) && !readerStates.getOrDefault(n, false) && !firstRun) {
                 log.debug("Detected change in reader \"{}\"", n);
                 MainWrapper.tapCounter.incrementAndGet();
                 setTooltip();
@@ -170,7 +173,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
     }
 
     void openUrl(URI uri) {
-        if (headless) {
+        if (single) {
             System.out.println(uri);
             if (shutdownHook != null)
                 Runtime.getRuntime().removeShutdownHook(shutdownHook);
@@ -243,10 +246,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
         // We manually open the instance
         CardTerminal t = readers.get();
         if (t == null) {
-            if (MainWrapper.debug)
-                t = LoggingCardTerminal.getInstance(manager.getTerminal(n), System.err);
-            else
-                t = manager.getTerminal(n);
+            t = MainWrapper.debug ? LoggingCardTerminal.getInstance(manager.getTerminal(n), System.err) : manager.getTerminal(n);
             readers.set(t);
         }
 
@@ -260,11 +260,9 @@ public class NFC4PC extends Application implements PCSCMonitor {
             APDUBIBO b = new APDUBIBO(CardBIBO.wrap(c));
             var uid = CardCommands.getUID(b);
             if (uid.isEmpty()) {
-                log.info("Assuming not a contactless reader/device");
+                log.info("No UID, assuming not a supported contactless reader/device");
                 return;
             }
-            var uidstring = HexUtils.bin2hex(uid.get());
-
             // Type 2 > Type 4
             var url = CardCommands.getType2(b).or(() -> CardCommands.getType4(b));
 
@@ -294,7 +292,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
 
     @Override
     public void readerListErrored(Throwable throwable) {
-        System.err.println("PC/SC Error: " + throwable.getMessage());
+        log.error("PC/SC Error: " + throwable.getMessage());
     }
 
     public static short getShort(byte[] bArray, short bOff) throws ArrayIndexOutOfBoundsException, NullPointerException {

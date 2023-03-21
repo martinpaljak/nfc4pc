@@ -19,9 +19,10 @@ public class MainWrapper extends CommandLine {
     static AtomicLong webhookCounter = new AtomicLong(0); // Atomic so we can have daemon threads reading it for statistics
 
     static boolean debug = false;
+
     public static void main(String[] args) {
         // Trap ctrl-c and similar signals
-        Thread t = new Thread(() -> {
+        Thread shutdownThread = new Thread(() -> {
             System.err.println("Ctrl-C, quitting nfc4pc");
             sendStatistics();
         });
@@ -35,42 +36,49 @@ public class MainWrapper extends CommandLine {
             }
             boolean ui = hasUI();
 
+            // Run in loop
+            boolean daemon = opts.has(OPT_DESKTOP) || opts.has(OPT_HEADLESS);
+
             if (opts.has(OPT_DEBUG)) {
                 debug = true;
                 System.setProperty("org.slf4j.simpleLogger.log.pro.javacard", "debug");
                 System.setProperty("org.slf4j.simpleLogger.log.apdu4j.pcsc", "debug");
             }
 
-            if (!ui && !(opts.has(CommandLine.OPT_WEBHOOK) || opts.has(OPT_GET))) {
-                fail("No desktop available, must run with --webhook or -g/--get");
+            if (!ui && opts.has(OPT_DESKTOP)) {
+                fail("No desktop available. Try headless mode with --headless --webhook");
             }
 
-            if (opts.has(CommandLine.OPT_WEBHOOK))
-                System.err.println("Webhook URI: " + opts.valueOf(CommandLine.OPT_WEBHOOK));
-            if (opts.has(CommandLine.OPT_UID_URL))
-                System.err.println("UID URI: " + opts.valueOf(CommandLine.OPT_UID_URL));
-            if (opts.has(CommandLine.OPT_META_URL))
-                System.err.println("Meta URI: " + opts.valueOf(CommandLine.OPT_META_URL));
+            if (!canOpenBrowser() && opts.has(OPT_DESKTOP)) {
+                fail("Can not open URL-s. Try headless mode with --headless --webhook");
+            }
 
-            Runtime.getRuntime().addShutdownHook(t);
+            if (daemon) {
+                if (opts.has(CommandLine.OPT_WEBHOOK))
+                    System.err.println("Webhook URI: " + opts.valueOf(CommandLine.OPT_WEBHOOK));
+                if (opts.has(CommandLine.OPT_UID_URL))
+                    System.err.println("UID URI: " + opts.valueOf(CommandLine.OPT_UID_URL));
+                if (opts.has(CommandLine.OPT_META_URL))
+                    System.err.println("Meta URI: " + opts.valueOf(CommandLine.OPT_META_URL));
+            }
 
-            boolean headless = opts.has(CommandLine.OPT_NO_GUI) || opts.has(CommandLine.OPT_HEADLESS) || opts.has(OPT_GET);
+            Runtime.getRuntime().addShutdownHook(shutdownThread);
 
             RuntimeConfig conf = new RuntimeConfig(opts.valueOf(OPT_UID_URL), opts.valueOf(OPT_META_URL), opts.valueOf(OPT_WEBHOOK), opts.valueOf(OPT_AUTHORIZATION));
-            // XXX
-            NFC4PC.main(conf, t, headless);
-            if (headless) {
+
+            boolean showUI = opts.has(OPT_DESKTOP) && !opts.has(OPT_NO_GUI);
+            // Configure
+            NFC4PC.main(conf, shutdownThread, !daemon, showUI);
+
+            if (!showUI) {
                 NFC4PC app = new NFC4PC();
                 app.init();
                 app.waitOnThread();
-            } else {
-                NFC4PC.launch();
             }
-            // Webserver
         } catch (Throwable ex) {
             ex.printStackTrace();
             System.err.println("No UI");
-            Runtime.getRuntime().removeShutdownHook(t);
+            Runtime.getRuntime().removeShutdownHook(shutdownThread);
         }
     }
 
@@ -80,6 +88,10 @@ public class MainWrapper extends CommandLine {
         System.setProperty("apple.awt.UIElement", "true");
         Toolkit tk = java.awt.Toolkit.getDefaultToolkit();
         return tk != null && !tk.getClass().getSimpleName().equals("HeadlessToolkit");
+    }
+
+    private static boolean canOpenBrowser() {
+        return Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE);
     }
 
 

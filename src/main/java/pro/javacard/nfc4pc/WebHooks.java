@@ -34,7 +34,7 @@ public class WebHooks {
                 }
                 return true;
             } catch (Throwable e) {
-                System.err.println("Failed to send webhook: " + e.getMessage());
+                log.error("Failed to send webhook", e);
                 throw e;
             }
         };

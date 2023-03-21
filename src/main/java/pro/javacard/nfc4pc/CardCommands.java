@@ -34,6 +34,7 @@ public class CardCommands {
         return true;
     }
 
+    // Returns the NDEF message
     static Optional<byte[]> getType2(APDUBIBO b) throws BIBOException {
         try {
             // Read initial block
@@ -56,7 +57,7 @@ public class CardCommands {
                         if (block.getSW() == 0x9000) {
                             log.debug("Block: {}", HexUtils.bin2hex(uid_bytes));
                             if (isNull(uid_bytes)) {
-                                log.warn("Empty block, not reading more");
+                                log.debug("Empty block, not reading more");
                                 break;
                             }
                             payload.write(uid_bytes);
@@ -70,7 +71,7 @@ public class CardCommands {
                     log.warn("Invalid capability block: {}", HexUtils.bin2hex(init));
                 }
             } else {
-                log.warn("Failed to read initial block: {}", HexUtils.bin2hex(initial.getBytes()));
+                log.info("Failed to read initial block: {}", HexUtils.bin2hex(initial.getBytes()));
             }
         } catch (IOException e) {
             log.error("Could not read: " + e.getMessage(), e);
@@ -78,6 +79,7 @@ public class CardCommands {
         return Optional.empty();
     }
 
+    // Turn the NDEF wellknown URL record into URL string
     static String record2url(byte[] record) {
         String rest = new String(Arrays.copyOfRange(record, 1, record.length));
         switch (record[0]) {
@@ -92,7 +94,7 @@ public class CardCommands {
             case 0x04:
                 return "https://" + rest;
             default:
-                throw new IllegalArgumentException("Unknown HTTP record type: " + HexUtils.bin2hex(record));
+                throw new IllegalArgumentException("Unknown URL record type: " + HexUtils.bin2hex(record));
         }
     }
 
@@ -106,6 +108,7 @@ public class CardCommands {
         return Arrays.copyOfRange(payload, 2, payload.length);
     }
 
+    // Extract single URL payload from message
     static String msg2url(byte[] payload) {
         log.debug("Parsing {}", HexUtils.bin2hex(payload));
 
