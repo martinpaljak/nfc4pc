@@ -11,6 +11,7 @@ module pro.javacard.nfc4pc {
     requires com.sun.jna;
     requires jopt.simple;
     requires ber.tlv;
+    requires com.google.zxing;
 
     exports pro.javacard.nfc4pc;
 }

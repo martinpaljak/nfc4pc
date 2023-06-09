@@ -1,10 +1,20 @@
 package pro.javacard.nfc4pc;
 
+import apdu4j.core.BIBO;
+import apdu4j.core.CommandAPDU;
+import apdu4j.core.HexUtils;
+import apdu4j.core.ResponseAPDU;
+import apdu4j.pcsc.CardBIBO;
+import apdu4j.pcsc.SCard;
+import apdu4j.pcsc.TerminalManager;
 import joptsimple.OptionSet;
 
+import javax.smartcardio.Card;
+import javax.smartcardio.CardTerminal;
 import java.awt.*;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -34,6 +44,25 @@ public class MainWrapper extends CommandLine {
             } catch (IOException e) {
                 fail("Could not start: " + e.getMessage());
             }
+
+            if (opts.has(OPT_EMULATE)) {
+                // Locate the reader
+                TerminalManager manager = TerminalManager.getDefault();
+                CardTerminal term = manager.getTerminal(opts.valueOf(OPT_READER));
+                Card c = term.connect("DIRECT");
+
+
+                // Check if reader responds with "sanity"
+                byte[] getver = HexUtils.hex2bin("E000001800");
+                ResponseAPDU resp = new ResponseAPDU(c.transmitControlCommand(SCard.CARD_CTL_CODE(3500), getver));
+                if (resp.getBytes().length > 3) {
+                    System.out.println("Reader: " + new String(resp.getBytes(), StandardCharsets.UTF_8) + " (" + HexUtils.bin2hex(resp.getBytes()) + ")");
+                } else {
+                    System.err.println("Reader does not respond with sanity");
+                    System.exit(1);
+                }
+                System.exit(0);
+            }
             boolean ui = hasUI();
 
             // Run in loop
@@ -49,8 +78,8 @@ public class MainWrapper extends CommandLine {
                 fail("No desktop available. Try headless mode with --headless --webhook");
             }
 
-            if (!canOpenBrowser() && opts.has(OPT_DESKTOP)) {
-                fail("Can not open URL-s. Try headless mode with --headless --webhook");
+            if (!canOpenBrowser() && opts.has(OPT_DESKTOP) && !opts.has(OPT_QR)) {
+                fail("Can not open URL-s. Try headless mode with --headless --webhook OR with --qr");
             }
 
             if (daemon) {
@@ -68,7 +97,7 @@ public class MainWrapper extends CommandLine {
 
             boolean showUI = opts.has(OPT_DESKTOP) && !opts.has(OPT_NO_GUI);
             // Configure
-            NFC4PC.main(conf, shutdownThread, !daemon, showUI);
+            NFC4PC.main(conf, shutdownThread, !daemon, showUI, opts.has(OPT_QR));
 
             if (!showUI) {
                 NFC4PC app = new NFC4PC();

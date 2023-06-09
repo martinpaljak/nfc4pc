@@ -24,8 +24,13 @@ public abstract class CommandLine {
     protected static OptionSpec<URI> OPT_META_URL = parser.acceptsAll(Arrays.asList("M", "meta-url"), "Launch URL-s at given URL").availableUnless(OPT_WEBHOOK, OPT_UID_URL).withRequiredArg().ofType(URI.class);
     protected static OptionSpec<Void> OPT_NO_GUI = parser.acceptsAll(List.of("no-gui"), "Run without GUI");
 
+    protected static OptionSpec<Void> OPT_QR = parser.acceptsAll(List.of("qrcode", "Q"), "Show QR code");
+
+    protected static OptionSpec<String> OPT_EMULATE = parser.acceptsAll(List.of("e", "emulate"), "Emulate tag with URL").withRequiredArg();
+    protected static OptionSpec<String> OPT_READER = parser.acceptsAll(List.of("r", "reader"), "Use reader for tag emulation").availableIf(OPT_EMULATE).withRequiredArg();
+
     protected static OptionSpec<Void> OPT_HEADLESS = parser.acceptsAll(List.of("headless"), "Run in headless (webhook-only) mode").availableIf(OPT_WEBHOOK).availableUnless(OPT_DEBUG);
-    protected static OptionSpec<String> OPT_AUTHORIZATION = parser.acceptsAll(List.of("auhtorization"), "Authorization header").availableIf(OPT_WEBHOOK).withRequiredArg();
+    protected static OptionSpec<String> OPT_AUTHORIZATION = parser.acceptsAll(List.of("authorization"), "Authorization header").availableIf(OPT_WEBHOOK).withRequiredArg();
 
 
     protected static OptionSet parseArguments(String[] argv) throws IOException {

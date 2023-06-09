@@ -46,6 +46,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
     private static Thread shutdownHook;
     private static boolean headless;
     private static boolean single = true;
+    private static boolean qr = false;
     private static RuntimeConfig conf;
 
     // This is a fun exercise, we have a thread per reader and use the thread name for logging as well as reader access.
@@ -130,12 +131,13 @@ public class NFC4PC extends Application implements PCSCMonitor {
         pcscMonitor.interrupt();
     }
 
-    public static void main(RuntimeConfig config, Thread shutdownHook, boolean single, boolean showUI) {
+    public static void main(RuntimeConfig config, Thread shutdownHook, boolean single, boolean showUI, boolean qr) {
         // Normal exit via menu removes hook
         NFC4PC.shutdownHook = shutdownHook;
         NFC4PC.headless = !showUI;
         NFC4PC.conf = config;
         NFC4PC.single = single;
+        NFC4PC.qr = qr;
 
         if (showUI) {
             // Icon, thank you
@@ -174,6 +176,10 @@ public class NFC4PC extends Application implements PCSCMonitor {
 
     void openUrl(URI uri) {
         if (single) {
+            if (qr) {
+                System.out.println(new QRCode().generate(uri.toString()));
+            }
+            // Print text URL even if QR is shown
             System.out.println(uri);
             if (shutdownHook != null)
                 Runtime.getRuntime().removeShutdownHook(shutdownHook);
@@ -255,7 +261,7 @@ public class NFC4PC extends Application implements PCSCMonitor {
             // Try to get exclusive access for a second
             // c = LoggingCardTerminal.getInstance(manager.getTerminal(reader)).connect("EXCLUSIVE;*");
             c = t.connect("*");
-            c.beginExclusive();
+            c.beginExclusive(); // Use locking, as this is short read
             // get UID
             APDUBIBO b = new APDUBIBO(CardBIBO.wrap(c));
             var uid = CardCommands.getUID(b);
