@@ -54,9 +54,28 @@ public class MainWrapper extends CommandLine {
 
                 // Check if reader responds with "sanity"
                 byte[] getver = HexUtils.hex2bin("E000001800");
-                ResponseAPDU resp = new ResponseAPDU(c.transmitControlCommand(SCard.CARD_CTL_CODE(3500), getver));
-                if (resp.getBytes().length > 3) {
-                    System.out.println("Reader: " + new String(resp.getBytes(), StandardCharsets.UTF_8) + " (" + HexUtils.bin2hex(resp.getBytes()) + ")");
+                byte[] ver = c.transmitControlCommand(SCard.CARD_CTL_CODE(3500), getver);
+                System.out.printf("Control code: %s 0x%04d", SCard.CARD_CTL_CODE(23500), SCard.CARD_CTL_CODE(3500));
+                if (ver.length > 3) {
+                    System.out.println("Reader: " + new String(ver, StandardCharsets.UTF_8) + " (" + HexUtils.bin2hex(ver) + ")");
+                    // Get emulation mode
+                    byte[] enteremu = HexUtils.hex2bin("E000004003010000");
+                    byte[] emu = c.transmitControlCommand(SCard.CARD_CTL_CODE(3500), enteremu);
+                    System.out.println("Emu: " + new String(emu, StandardCharsets.UTF_8) + " (" + HexUtils.bin2hex(emu) + ")");
+                    // Take me to google.com up to 00 18 (which is len)  is ACS header
+                    byte[] writeemu = HexUtils.stringToBin("E0 00 00 60 1C 01 01 00 18 E1 10 06 00 03 0F D1 01 0B 55 01 67 6F 6F 67 6C 65 2E 63 6F 6D FE 00 00");
+                    byte[] write = c.transmitControlCommand(SCard.CARD_CTL_CODE(3500), writeemu);
+                    System.out.println("write: " + HexUtils.bin2hex(write));
+
+
+                    byte[] reademu = HexUtils.hex2bin("E00000600600010034");
+                    byte[] read = c.transmitControlCommand(SCard.CARD_CTL_CODE(3500), reademu);
+                    System.out.println("read: " +  HexUtils.bin2hex(read));
+
+                    // read emu
+
+                    Thread.sleep(60000);
+
                 } else {
                     System.err.println("Reader does not respond with sanity");
                     System.exit(1);
