@@ -18,7 +18,7 @@ public class WebHooks {
 
     final static HttpClient client = HttpClient.newHttpClient();
 
-    static Callable<Boolean> post(URI url, Map<String, String> data, String authorization) {
+    public static Callable<Boolean> post(URI url, Map<String, String> data, String authorization) {
         log.debug("Webhook to {}", url);
         return () -> {
             try {

@@ -1,34 +1,24 @@
 package pro.javacard.nfc4pc;
 
-import apdu4j.core.BIBO;
-import apdu4j.core.CommandAPDU;
-import apdu4j.core.HexUtils;
-import apdu4j.core.ResponseAPDU;
-import apdu4j.pcsc.CardBIBO;
-import apdu4j.pcsc.SCard;
-import apdu4j.pcsc.TerminalManager;
 import joptsimple.OptionSet;
 
-import javax.smartcardio.Card;
-import javax.smartcardio.CardTerminal;
 import java.awt.*;
 import java.io.IOException;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 // Static entrypoint and CLI handling
-public class MainWrapper extends CommandLine {
+public class MainWrapper extends CLIOptions {
     static final URI reportURL = URI.create("https://javacard.pro/nfc4pc/stats");
     static AtomicLong tapCounter = new AtomicLong(0); // Atomic so we can have daemon threads reading it for statistics
     static AtomicLong urlCounter = new AtomicLong(0); // Atomic so we can have daemon threads reading it for statistics
     static AtomicLong uidCounter = new AtomicLong(0); // Atomic so we can have daemon threads reading it for statistics
     static AtomicLong metaCounter = new AtomicLong(0); // Atomic so we can have daemon threads reading it for statistics
     static AtomicLong webhookCounter = new AtomicLong(0); // Atomic so we can have daemon threads reading it for statistics
-
-    static boolean debug = false;
 
     public static void main(String[] args) {
         // Trap ctrl-c and similar signals
@@ -37,109 +27,81 @@ public class MainWrapper extends CommandLine {
             sendStatistics();
         });
 
+
+        OptionSet opts = null;
         try {
-            OptionSet opts = null;
+            opts = CLIOptions.parseArguments(args);
+        } catch (IOException e) {
+            fail("Could not parse arguments: " + e.getMessage());
+        }
+
+        if (opts.has(OPT_DEBUG)) {
+            System.setProperty("org.slf4j.simpleLogger.log.pro.javacard", "debug");
+            System.setProperty("org.slf4j.simpleLogger.log.apdu4j.pcsc", "debug");
+        }
+
+        // Quick CLI hack - print QR code.
+        if (opts.has(OPT_GO)) {
+            NFC4PC.openBrowser(opts.valueOf(OPT_GO), opts);
+            System.exit(0);
+        }
+        if (opts.hasArgument(OPT_QR)) {
+            System.out.println(new QRCode().generate(opts.valueOf(OPT_QR).toString()));
+            System.exit(0);
+        }
+
+        if (opts.has(OPT_EMULATE)) {
             try {
-                opts = CommandLine.parseArguments(args);
-            } catch (IOException e) {
-                fail("Could not start: " + e.getMessage());
+                Emulation.emulate(opts);
+            } catch (Exception e) {
+                System.err.println("Emulation failed: " + e.getMessage());
+                System.exit(2);
             }
-
-            if (opts.has(OPT_EMULATE)) {
-                // Locate the reader
-                TerminalManager manager = TerminalManager.getDefault();
-                CardTerminal term = manager.getTerminal(opts.valueOf(OPT_READER));
-                Card c = term.connect("DIRECT");
-
-
-                // Check if reader responds with "sanity"
-                byte[] getver = HexUtils.hex2bin("E000001800");
-                byte[] ver = c.transmitControlCommand(SCard.CARD_CTL_CODE(3500), getver);
-                System.out.printf("Control code: %s 0x%04d", SCard.CARD_CTL_CODE(23500), SCard.CARD_CTL_CODE(3500));
-                if (ver.length > 3) {
-                    System.out.println("Reader: " + new String(ver, StandardCharsets.UTF_8) + " (" + HexUtils.bin2hex(ver) + ")");
-                    // Get emulation mode
-                    byte[] enteremu = HexUtils.hex2bin("E000004003010000");
-                    byte[] emu = c.transmitControlCommand(SCard.CARD_CTL_CODE(3500), enteremu);
-                    System.out.println("Emu: " + new String(emu, StandardCharsets.UTF_8) + " (" + HexUtils.bin2hex(emu) + ")");
-                    // Take me to google.com up to 00 18 (which is len)  is ACS header
-                    byte[] writeemu = HexUtils.stringToBin("E0 00 00 60 1C 01 01 00 18 E1 10 06 00 03 0F D1 01 0B 55 01 67 6F 6F 67 6C 65 2E 63 6F 6D FE 00 00");
-                    byte[] write = c.transmitControlCommand(SCard.CARD_CTL_CODE(3500), writeemu);
-                    System.out.println("write: " + HexUtils.bin2hex(write));
-
-
-                    byte[] reademu = HexUtils.hex2bin("E00000600600010034");
-                    byte[] read = c.transmitControlCommand(SCard.CARD_CTL_CODE(3500), reademu);
-                    System.out.println("read: " +  HexUtils.bin2hex(read));
-
-                    // read emu
-
-                    Thread.sleep(60000);
-
-                } else {
-                    System.err.println("Reader does not respond with sanity");
-                    System.exit(1);
-                }
-                System.exit(0);
-            }
-            boolean ui = hasUI();
-
-            // Run in loop
-            boolean daemon = opts.has(OPT_DESKTOP) || opts.has(OPT_HEADLESS);
-
-            if (opts.has(OPT_DEBUG)) {
-                debug = true;
-                System.setProperty("org.slf4j.simpleLogger.log.pro.javacard", "debug");
-                System.setProperty("org.slf4j.simpleLogger.log.apdu4j.pcsc", "debug");
-            }
-
-            if (!ui && opts.has(OPT_DESKTOP)) {
-                fail("No desktop available. Try headless mode with --headless --webhook");
-            }
-
-            if (!canOpenBrowser() && opts.has(OPT_DESKTOP) && !opts.has(OPT_QR)) {
-                fail("Can not open URL-s. Try headless mode with --headless --webhook OR with --qr");
-            }
-
-            if (daemon) {
-                if (opts.has(CommandLine.OPT_WEBHOOK))
-                    System.err.println("Webhook URI: " + opts.valueOf(CommandLine.OPT_WEBHOOK));
-                if (opts.has(CommandLine.OPT_UID_URL))
-                    System.err.println("UID URI: " + opts.valueOf(CommandLine.OPT_UID_URL));
-                if (opts.has(CommandLine.OPT_META_URL))
-                    System.err.println("Meta URI: " + opts.valueOf(CommandLine.OPT_META_URL));
-            }
-
+        } else {
+            NFC4PC app = new NFC4PC(opts, shutdownThread);
+            NFCReader reader = new NFCReader(app);
             Runtime.getRuntime().addShutdownHook(shutdownThread);
 
-            RuntimeConfig conf = new RuntimeConfig(opts.valueOf(OPT_UID_URL), opts.valueOf(OPT_META_URL), opts.valueOf(OPT_WEBHOOK), opts.valueOf(OPT_AUTHORIZATION));
-
-            boolean showUI = opts.has(OPT_DESKTOP) && !opts.has(OPT_NO_GUI);
-            // Configure
-            NFC4PC.main(conf, shutdownThread, !daemon, showUI, opts.has(OPT_QR));
-
-            if (!showUI) {
-                NFC4PC app = new NFC4PC();
-                app.init();
-                app.waitOnThread();
+            if (opts.has(OPT_DESKTOP)) {
+                try {
+                    if (!hasUI())
+                        fail("No desktop available. Try headless mode with --headless");
+                    DesktopApp.configure(app, shutdownThread);
+                } catch (Throwable ex) {
+                    ex.printStackTrace();
+                    System.err.println("No desktop UI available.");
+                    System.err.println("Please check https://github.com/martinpaljak/nfc4pc/wiki for troubleshooting");
+                    Runtime.getRuntime().removeShutdownHook(shutdownThread);
+                    System.exit(1);
+                }
+            } else {
+                try {
+                    reader.waitForever();
+                } catch (InterruptedException e) {
+                    System.err.println("Interrupted");
+                }
             }
-        } catch (Throwable ex) {
-            ex.printStackTrace();
-            System.err.println("No UI");
-            Runtime.getRuntime().removeShutdownHook(shutdownThread);
         }
     }
 
 
     // See https://stackoverflow.com/questions/43669797/run-only-in-system-tray-with-no-dock-taskbar-icon-in-java
     private static boolean hasUI() {
-        System.setProperty("apple.awt.UIElement", "true");
-        Toolkit tk = java.awt.Toolkit.getDefaultToolkit();
-        return tk != null && !tk.getClass().getSimpleName().equals("HeadlessToolkit");
+        try {
+            System.setProperty("apple.awt.UIElement", "true");
+            Toolkit tk = java.awt.Toolkit.getDefaultToolkit();
+            return tk != null && !tk.getClass().getSimpleName().equals("HeadlessToolkit");
+        } catch (Throwable e) {
+            System.err.println("JavaFX probably not available");
+            return false;
+        }
     }
 
-    private static boolean canOpenBrowser() {
-        return Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE);
+    private static boolean canOpenBrowser(OptionSet opts) {
+        boolean env = System.getenv("BROWSER") != null && Files.isExecutable(Paths.get(System.getenv("BROWSER")));
+        boolean cmd = opts.hasArgument(OPT_BROWSER) && Files.isExecutable(Paths.get(opts.valueOf(OPT_BROWSER)));
+        boolean desktop = Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE);
+        return env || cmd || desktop;
     }
 
 

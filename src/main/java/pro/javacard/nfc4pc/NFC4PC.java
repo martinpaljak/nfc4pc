@@ -1,339 +1,176 @@
 package pro.javacard.nfc4pc;
 
-import apdu4j.core.APDUBIBO;
 import apdu4j.core.HexUtils;
-import apdu4j.pcsc.*;
-import apdu4j.pcsc.terminals.LoggingCardTerminal;
-import com.dustinredmond.fxtrayicon.FXTrayIcon;
-import javafx.application.Application;
-import javafx.application.Platform;
-import javafx.scene.control.MenuItem;
-import javafx.stage.Stage;
-import javafx.stage.StageStyle;
+import joptsimple.OptionSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.smartcardio.Card;
-import javax.smartcardio.CardException;
-import javax.smartcardio.CardTerminal;
 import java.awt.*;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.Timer;
+import java.util.TimerTask;
 
-public class NFC4PC extends Application implements PCSCMonitor {
+public class NFC4PC extends CLIOptions implements TapProcessor {
     static final Logger log = LoggerFactory.getLogger(NFC4PC.class);
 
-    // D2760000850101
-    static final byte[] NDEF_AID = new byte[]{(byte) 0xD2, (byte) 0x76, (byte) 0x00, (byte) 0x00, (byte) 0x85, (byte) 0x01, (byte) 0x01};
+    final static int DEFAULT_TIMEOUT = 30;
 
-    // Let's have a thread per reader and a monitoring thread, in addition to the UI thread. Many threads, yay!
-    private final TerminalManager manager = TerminalManager.getDefault();
-    private final Thread pcscMonitor = new Thread(new HandyTerminalsMonitor(manager, this));
+    final static String ANSI_CLEAR_SCREEN = "\033[H\033[2J";
+    boolean daemon;
 
-    // CardTerminal instance is kept per thread.
-    private final ConcurrentHashMap<String, ExecutorService> readerThreads = new ConcurrentHashMap<>();
-    static ThreadLocal<CardTerminal> readers = ThreadLocal.withInitial(() -> null);
+    Timer idle = new Timer("IdleTimeout");
 
-    private static Thread shutdownHook;
-    private static boolean headless;
-    private static boolean single = true;
-    private static boolean qr = false;
-    private static RuntimeConfig conf;
+    static class IdleTimeout extends TimerTask {
 
-    // This is a fun exercise, we have a thread per reader and use the thread name for logging as well as reader access.
-    void onReaderThread(String name, Runnable r) {
-        readerThreads.computeIfAbsent(name, (n) -> Executors.newSingleThreadExecutor(new NamedReaderThreadFactory(n))).submit(r);
-    }
+        final long seconds;
+        final Thread controlCHook;
 
-    // ThreadFactory with single purpose: makes threads with a given name.
-    static final class NamedReaderThreadFactory implements ThreadFactory {
-        final String n;
-
-        public NamedReaderThreadFactory(String name) {
-            n = name;
+        IdleTimeout(long seconds, Thread controlCHook) {
+            this.seconds = seconds;
+            this.controlCHook = controlCHook;
         }
 
-        public Thread newThread(Runnable r) {
-            Thread t = new Thread(r, n);
-            t.setDaemon(true);
-            return t;
+        @Override
+        public void run() {
+            System.err.printf("Timeout, no tap within %d seconds!%n", seconds);
+            Runtime.getRuntime().removeShutdownHook(controlCHook);
+            System.exit(2);
         }
     }
 
-    private FXTrayIcon icon;
+    final TimerTask idler;
 
-    private final Map<String, Boolean> readerStates = new HashMap<>();
+    URI webhook;
+    final OptionSet opts;
 
-    // GUI option
-    private void setTooltip() {
-        String msg = String.format("NFC4PC: %d actions for %d taps", MainWrapper.urlCounter.get() + MainWrapper.uidCounter.get() + MainWrapper.metaCounter.get() + MainWrapper.webhookCounter.get(), MainWrapper.tapCounter.get());
-        if (headless) {
-            log.info(msg);
-        } else {
-            // Called from init, thus can be null
-            if (icon != null)
-                icon.setTrayIconTooltip(msg);
-        }
-    }
+    final Thread shutdownHook;
 
-    private void notifyUser(String title, String message) {
-        if (headless) {
-            System.err.println(title + ": " + message);
-        } else {
-            Platform.runLater(() -> icon.showInfoMessage(title, message));
-        }
-    }
+    public NFC4PC(OptionSet opts, Thread shutdownHook) {
+        this.opts = opts;
+
+        this.shutdownHook = shutdownHook;
+        // Desktop mode, continuous mode or headless daemon
+        daemon = opts.has(OPT_DESKTOP) || opts.has(OPT_CONTINUE) || opts.has(OPT_HEADLESS);
+        log.info("Daemon mode: {}", daemon);
+        webhook = opts.valueOf(OPT_WEBHOOK);
+        log.info("Webhook: {}", webhook);
 
 
-    @Override
-    public void start(Stage primaryStage) throws Exception {
-        // FIXME: first "similar from Google"
-        icon = new FXTrayIcon(primaryStage, Objects.requireNonNull(getClass().getResource("icon.png")));
-        icon.addExitItem("Exit", (event) -> {
-            System.err.println("Exiting nfc4pc");
-            if (shutdownHook != null)
-                Runtime.getRuntime().removeShutdownHook(shutdownHook);
-            MainWrapper.sendStatistics();
-            Platform.exit(); // shutdown
-            System.exit(0); // Exit
-        });
+        // Set idle quit for non-daemon mode
+        if (!daemon) {
+            long secs = DEFAULT_TIMEOUT;
 
-        MenuItem about = new MenuItem("About NFC4PC");
-        about.setOnAction((e) -> {
-            openUrl(URI.create("https://github.com/martinpaljak/NFC4PC/wiki"));
-        });
-        icon.addMenuItem(about);
-        setTooltip();
-        // No UI other than tray
-        primaryStage.initStyle(StageStyle.TRANSPARENT);
-        icon.show();
-    }
+            if (opts.has(OPT_TIMEOUT))
+                secs = opts.valueOf(OPT_TIMEOUT);
 
-    @Override
-    public void init() throws Exception {
-        // Start monitoring thread
-        pcscMonitor.setDaemon(true);
-        pcscMonitor.setName("PC/SC monitor");
-        pcscMonitor.start();
-    }
+            log.info("Timeout secs: {}", secs);
 
-    @Override
-    public void stop() throws Exception {
-        pcscMonitor.interrupt();
-    }
-
-    public static void main(RuntimeConfig config, Thread shutdownHook, boolean single, boolean showUI, boolean qr) {
-        // Normal exit via menu removes hook
-        NFC4PC.shutdownHook = shutdownHook;
-        NFC4PC.headless = !showUI;
-        NFC4PC.conf = config;
-        NFC4PC.single = single;
-        NFC4PC.qr = qr;
-
-        if (showUI) {
-            // Icon, thank you
-            launch();
-        }
-    }
-
-    @Override
-    public void readerListChanged(List<PCSCReader> list) {
-        // Track changes. PC/SC monitor thread
-        boolean firstRun = readerStates.isEmpty(); // Require fresh tap
-
-        Map<String, Boolean> newStates = new HashMap<>();
-        list.forEach(e -> newStates.put(e.getName(), e.isPresent()));
-
-        for (PCSCReader e : list) {
-            String n = e.getName();
-            if (e.isExclusive()) {
-                log.debug("Ignoring exclusively in use reader \"{}\"", n);
-            } else if (newStates.get(n) && !readerStates.getOrDefault(n, false) && !firstRun) {
-                log.debug("Detected change in reader \"{}\"", n);
-                MainWrapper.tapCounter.incrementAndGet();
-                setTooltip();
-
-                // Try to read
-                onReaderThread(n, this::tryToRead);
-            }
-            // Store state of _this_ notification
-            readerStates.put(n, newStates.get(n));
-        }
-    }
-
-    static String uid2str(byte[] uid) {
-        return HexUtils.bin2hex(uid);
-    }
-
-    void openUrl(URI uri) {
-        if (single) {
-            if (qr) {
-                System.out.println(new QRCode().generate(uri.toString()));
-            }
-            // Print text URL even if QR is shown
-            System.out.println(uri);
-            if (shutdownHook != null)
-                Runtime.getRuntime().removeShutdownHook(shutdownHook);
-            System.exit(0);
-        }
-        try {
-            Desktop desktop = Desktop.getDesktop();
-            if (desktop != null && desktop.isSupported(Desktop.Action.BROWSE)) {
-                desktop.browse(uri);
+            // by default there is timeout, unless run with -t 0
+            if (secs > 0) {
+                idler = new IdleTimeout(secs, shutdownHook);
+                idle.schedule(idler, secs * 1000);
             } else {
-                // report error
-                log.error("No desktop?");
-                System.exit(1);
+                idler = null;
             }
-        } catch (IOException e) {
-            log.error("Could not launch URL: " + e.getMessage(), e);
-        }
+        } else
+            idler = null;
+
     }
 
+    @Override
+    public void onNFCTap(NFCTapData data) {
+        log.info("TAP: {}", data);
 
-    void onTap(String reader, byte[] uid, String url) {
+        // Cancel idler!
+        if (idler != null)
+            idler.cancel();
+
+        if (opts.has(OPT_CLEAR) && MainWrapper.tapCounter.get() > 0)
+            System.out.print(ANSI_CLEAR_SCREEN);
+        MainWrapper.tapCounter.incrementAndGet();
+
+        if (opts.has(OPT_CONTINUE))
+            System.out.println("Tap #" + MainWrapper.tapCounter.get());
+
         try {
-            if (conf.webhook().isPresent()) {
-                LinkedHashMap<String, String> payload = new LinkedHashMap<>();
-                payload.put("uid", uid2str(uid));
-                if (url != null)
-                    payload.put("url", url);
-                MainWrapper.webhookCounter.incrementAndGet();
-                try {
-                    if (!WebHooks.post(conf.webhook().get(), payload, conf.auth().orElse(null)).call()) {
-                        notifyUser(reader, "Failed to post webhook to " + conf.webhook().get());
-                    }
-                } catch (Exception e) {
-                    notifyUser(reader, "Failed to post webhook to " + conf.webhook().get());
-                }
-            } else {
-                // Open
-                if (conf.meta().isPresent()) {
-                    MainWrapper.metaCounter.incrementAndGet();
-                    URI target = appendUri(conf.meta().get(), "uid", uid2str(uid));
-                    if (url != null) {
-                        target = appendUri(target, "url", URLEncoder.encode(url, StandardCharsets.UTF_8));
-                    }
-                    openUrl(target);
+            if (data.error() != null) {
+                if (console()) {
+                    System.err.println("WARNING: " + data.error().getMessage());
                 } else {
-                    if (url == null) {
-                        if (conf.uid().isPresent()) {
-                            MainWrapper.uidCounter.incrementAndGet();
-                            openUrl(appendUri(conf.uid().get(), "uid", uid2str(uid)));
+                    log.error(data.error().getMessage(), data.error());
+                    // FIXME: log or show notification
+                }
+            }
+            if (data.uid() != null) {
+                if (opts.has(OPT_WEBHOOK)) {
+                    LinkedHashMap<String, String> payload = new LinkedHashMap<>();
+                    payload.put("uid", uid2str(data.uid()));
+                    if (data.url() != null)
+                        payload.put("url", data.url().toString());
+                    MainWrapper.webhookCounter.incrementAndGet();
+                    try {
+                        if (!WebHooks.post(opts.valueOf(OPT_WEBHOOK), payload, opts.valueOf(OPT_AUTHORIZATION)).call()) {
+                            log.error("Failed to post webhook to " + opts.valueOf(OPT_WEBHOOK));
+                        }
+                    } catch (Exception e) {
+                        log.error("Failed to post webhook to " + opts.valueOf(OPT_WEBHOOK) + ": " + e.getMessage(), e);
+                    }
+
+                } else {
+                    URI uri = transform(data, opts);
+                    if (console()) {
+                        if (opts.has(OPT_BROWSER)) {
+                            openBrowser(uri);
                         } else {
-                            notifyUser(reader, "No action for UID: " + uid2str(uid));
+                            if (opts.has(OPT_QR)) {
+                                System.out.println(new QRCode().generate(uri));
+                            }
+                            System.out.println(uri);
                         }
                     } else {
-                        // Standard NDEF URL
-                        MainWrapper.urlCounter.incrementAndGet();
-                        openUrl(URI.create(url));
+                        openBrowser(uri);
                     }
                 }
             }
         } catch (URISyntaxException e) {
-            throw new RuntimeException(e);
+            log.error("Could not transform payload: " + e.getMessage(), e);
+        }
+
+        if (!daemon) {
+            log.debug("Not daemon, exiting");
+            Runtime.getRuntime().removeShutdownHook(shutdownHook);
+            System.exit(0);
         }
     }
 
-
-    void tryToRead() {
-        // This is called on the named thread of the reader.
-        String n = Thread.currentThread().getName();
-
-        // We manually open the instance
-        CardTerminal t = readers.get();
-        if (t == null) {
-            t = MainWrapper.debug ? LoggingCardTerminal.getInstance(manager.getTerminal(n), System.err) : manager.getTerminal(n);
-            readers.set(t);
-        }
-
-        Card c = null;
-        try {
-            // Try to get exclusive access for a second
-            // c = LoggingCardTerminal.getInstance(manager.getTerminal(reader)).connect("EXCLUSIVE;*");
-            c = t.connect("*");
-            c.beginExclusive(); // Use locking, as this is short read
-            // get UID
-            APDUBIBO b = new APDUBIBO(CardBIBO.wrap(c));
-            var uid = CardCommands.getUID(b);
-            if (uid.isEmpty()) {
-                log.info("No UID, assuming not a supported contactless reader/device");
-                return;
+    static URI transform(NFCTapData data, OptionSet opts) throws URISyntaxException {
+        // Meta, if configured
+        URI target;
+        if (opts.has(OPT_META_URL)) {
+            target = appendUri(opts.valueOf(OPT_META_URL), "uid", uid2str(data.uid()));
+            if (data.url() != null) {
+                target = appendUri(target, "url", URLEncoder.encode(data.url().toASCIIString(), StandardCharsets.UTF_8));
             }
-            // Type 2 > Type 4
-            var url = CardCommands.getType2(b).or(() -> CardCommands.getType4(b));
-
-            String location = null;
-            if (url.isPresent())
-                try {
-                    // TODO: detect unknown payload. TODO: warn if smart poster
-                    location = CardCommands.msg2url(url.get());
-                } catch (IllegalArgumentException e) {
-                    notifyUser(n, "Could not parse message etc");
+        } else {
+            // or UID, if url is empty
+            if (data.url() == null) {
+                if (opts.has(OPT_UID_URL)) {
+                    target = appendUri(opts.valueOf(OPT_UID_URL), "uid", uid2str(data.uid()));
+                } else {
+                    throw new IllegalStateException("Only UID available, but no UID URL configured!");
                 }
-            onTap(n, uid.get(), location);
-        } catch (Exception e) {
-            // TODO: notify exclusively opened readers
-            log.error("Could not connect to or read: " + e.getMessage(), e);
-            notifyUser(n, "Could not read: " + SCard.getExceptionMessage(e));
-        } finally {
-            if (c != null)
-                try {
-                    c.disconnect(true);
-                } catch (CardException e) {
-                    log.error("Could not disconnect: " + e.getMessage(), e);
-                }
+            } else {
+                // or actual ndef url
+                return data.url();
+            }
         }
-    }
-
-
-    @Override
-    public void readerListErrored(Throwable throwable) {
-        log.error("PC/SC Error: " + throwable.getMessage());
-    }
-
-    public static short getShort(byte[] bArray, short bOff) throws ArrayIndexOutOfBoundsException, NullPointerException {
-        return (short) (((short) bArray[bOff] << 8) + ((short) bArray[bOff + 1] & 255));
-    }
-
-    public static byte[] concatenate(byte[]... args) {
-        int length = 0;
-        int pos = 0;
-        byte[][] var3 = args;
-        int var4 = args.length;
-
-        int var5;
-        for (var5 = 0; var5 < var4; ++var5) {
-            byte[] arg = var3[var5];
-            length += arg.length;
-        }
-
-        byte[] result = new byte[length];
-        byte[][] var9 = args;
-        var5 = args.length;
-
-        for (int var10 = 0; var10 < var5; ++var10) {
-            byte[] arg = var9[var10];
-            System.arraycopy(arg, 0, result, pos, arg.length);
-            pos += arg.length;
-        }
-
-        return result;
-    }
-
-    public static URI appendUri(String uri, String key, String value) throws URISyntaxException {
-        URI oldUri = new URI(uri);
-        String append = key + "=" + value;
-        return new URI(oldUri.getScheme(), oldUri.getAuthority(), oldUri.getPath(), oldUri.getQuery() == null ? append : oldUri.getQuery() + "&" + append, oldUri.getFragment());
+        return target;
     }
 
     public static URI appendUri(URI oldUri, String key, String value) throws URISyntaxException {
@@ -342,8 +179,47 @@ public class NFC4PC extends Application implements PCSCMonitor {
         return new URI(oldUri.getScheme(), oldUri.getAuthority(), oldUri.getPath(), oldUri.getQuery() == null ? append : oldUri.getQuery() + "&" + append, oldUri.getFragment());
     }
 
-    // Wait until PC/SC monitor exits
-    void waitOnThread() throws InterruptedException {
-        pcscMonitor.join();
+    static String uid2str(byte[] uid) {
+        return HexUtils.bin2hex(uid).toLowerCase();
+    }
+
+    public static Process exec(String... args) throws IOException {
+        log.info("Executing {}", Arrays.stream(args).toList());
+        // Prevent dock icon from popping up when run on macOS
+        System.setProperty("apple.awt.UIElement", "true");
+        // Inherit IO so that commands can print things
+        return new ProcessBuilder().inheritIO().command(args).start();
+    }
+
+    public static void openBrowser(URI url, OptionSet opts) {
+        log.info("Opening browser for {}", url);
+        try {
+            String browser_env = System.getenv("BROWSER");
+            if (opts.hasArgument(OPT_BROWSER)) {
+                log.info("Launching browser: " + opts.valueOf(OPT_BROWSER) + " " + url.toString());
+                exec(opts.valueOf(OPT_BROWSER), url.toString());
+            } else if (browser_env != null) {
+                log.info("Launching browser: " + browser_env + " " + url.toString());
+                exec(browser_env, url.toString());
+            } else {
+                Desktop desktop = Desktop.getDesktop();
+                if (desktop != null && desktop.isSupported(Desktop.Action.BROWSE)) {
+                    desktop.browse(url);
+                } else {
+                    throw new IllegalStateException("No browser config and desktop action not available");
+                }
+            }
+        } catch (IOException e) {
+            log.error("Could not start browser: " + e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void openBrowser(URI url) {
+        openBrowser(url, opts);
+    }
+
+    boolean console() {
+        return !(opts.has(OPT_DESKTOP) || opts.has(OPT_HEADLESS));
     }
 }

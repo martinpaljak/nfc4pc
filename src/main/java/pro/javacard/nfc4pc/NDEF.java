@@ -8,12 +8,13 @@ import org.slf4j.LoggerFactory;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Optional;
 
-public class CardCommands {
-    static final Logger log = LoggerFactory.getLogger(CardCommands.class);
+public class NDEF {
+    static final Logger log = LoggerFactory.getLogger(NDEF.class);
+    // D2760000850101
+    static final byte[] NDEF_AID = new byte[]{(byte) 0xD2, (byte) 0x76, (byte) 0x00, (byte) 0x00, (byte) 0x85, (byte) 0x01, (byte) 0x01};
 
     // Reads the UID, if available (might not be supported by reader or might be unsupported chip/technology)
     static Optional<byte[]> getUID(APDUBIBO b) throws BIBOException {
@@ -114,8 +115,12 @@ public class CardCommands {
 
         final byte[] record;
 
+        // Give a helpful message when using smart posters
+        if (payload[1] == 0x02 && payload[3] == 0x53 && payload[4] == 0x70)
+            throw new IllegalArgumentException("Smart Poster would not be supported by iPhone. Ignoring");
+
         if (payload[1] != 0x01) {
-            throw new IllegalArgumentException("TNF length is not 1");
+            throw new IllegalArgumentException("Unsupprted NDEF message: TNF length is not 1");
         }
         // Short record
         if ((payload[0] & 0x10) == 0x10) {
@@ -123,34 +128,33 @@ public class CardCommands {
                 throw new IllegalArgumentException("Unsupported TNF");
             int len = payload[2] & 0xFF;
             record = Arrays.copyOfRange(payload, 4, 4 + len);
-        } else {
+        } else if ((payload[0] & 0x10) == 0x00){
             if (payload[6] != 0x55)
                 throw new IllegalArgumentException("Unsupported TNF");
             ByteBuffer buffer = ByteBuffer.wrap(payload);
-            buffer.order(ByteOrder.BIG_ENDIAN);
             int len = buffer.getInt(2);
             record = Arrays.copyOfRange(payload, 7, 7 + len);
-        }
+        } else throw new IllegalArgumentException("Invalid SR bit");
         return record2url(record);
     }
 
     static Optional<byte[]> getType4(APDUBIBO bibo) {
         log.debug("Trying to read Type 4 NDEF tag");
         try {
-            ResponseAPDU select = bibo.transceive(new CommandAPDU(0x00, 0xA4, 0x04, 0x00, NFC4PC.NDEF_AID, 256));
+            ResponseAPDU select = bibo.transceive(new CommandAPDU(0x00, 0xA4, 0x04, 0x00, NDEF_AID, 256));
             if (select.getSW() == 0x9000) {
                 ResponseAPDU cap = bibo.transceive(new CommandAPDU(0x00, 0xA4, 0x00, 0x0C, HexUtils.hex2bin("e103")));
                 if (cap.getSW() == 0x9000) {
                     // Capabilities
                     ResponseAPDU read = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x00, 0x0F));
 
-                    int maxReadSize = NFC4PC.getShort(read.getData(), (short) 3);
-                    int payloadSize = NFC4PC.getShort(read.getData(), (short) 11);
+                    int maxReadSize = getShort(read.getData(), (short) 3);
+                    int payloadSize = getShort(read.getData(), (short) 11);
 
                     ResponseAPDU selectDATA = bibo.transceive(new CommandAPDU(0x00, 0xA4, 0x00, 0x0C, HexUtils.hex2bin("e104")));
                     if (selectDATA.getSW() == 0x9000) {
                         ResponseAPDU len = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x00, 0x02));
-                        int reportedLen = NFC4PC.getShort(len.getData(), (short) 0);
+                        int reportedLen = getShort(len.getData(), (short) 0);
                         if ((reportedLen + 2) != payloadSize) {
                             log.error("Warning: payload length mismatch");
                         }
@@ -159,7 +163,7 @@ public class CardCommands {
                             if (reportedLen > maxReadSize) { // XXX: assumes that not that big
                                 byte[] chunk1 = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x02, maxReadSize)).getData();
                                 byte[] chunk2 = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, maxReadSize + 2, reportedLen - maxReadSize)).getData();
-                                payload = NFC4PC.concatenate(chunk1, chunk2);
+                                payload = concatenate(chunk1, chunk2);
                             } else {
                                 payload = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x02, reportedLen)).getData();
                             }
@@ -173,10 +177,35 @@ public class CardCommands {
             }
         } catch (BIBOException e) {
             Optional<String> err = SCard.getPCSCError(e);
-            if (err.isPresent()) {
-                log.error("Failed to read type 4: {}", err.get());
-            }
+            err.ifPresent(s -> log.error("Failed to read type 4: {}", s));
         }
         return Optional.empty();
+    }
+
+    public static byte[] concatenate(byte[]... args) {
+        int length = 0;
+        int pos = 0;
+        int var4 = args.length;
+
+        int var5;
+        for (var5 = 0; var5 < var4; ++var5) {
+            byte[] arg = args[var5];
+            length += arg.length;
+        }
+
+        byte[] result = new byte[length];
+        var5 = args.length;
+
+        for (int var10 = 0; var10 < var5; ++var10) {
+            byte[] arg = args[var10];
+            System.arraycopy(arg, 0, result, pos, arg.length);
+            pos += arg.length;
+        }
+
+        return result;
+    }
+
+    public static short getShort(byte[] bArray, short bOff) throws ArrayIndexOutOfBoundsException, NullPointerException {
+        return (short) (((short) bArray[bOff] << 8) + ((short) bArray[bOff + 1] & 255));
     }
 }
