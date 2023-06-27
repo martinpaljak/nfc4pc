@@ -21,6 +21,10 @@ public class MainWrapper extends CLIOptions {
     static AtomicLong webhookCounter = new AtomicLong(0); // Atomic so we can have daemon threads reading it for statistics
 
     public static void main(String[] args) {
+        // Prevent dock icon on macOS
+        // See https://stackoverflow.com/questions/43669797/run-only-in-system-tray-with-no-dock-taskbar-icon-in-java
+        System.setProperty("apple.awt.UIElement", "true");
+
         // Trap ctrl-c and similar signals
         Thread shutdownThread = new Thread(() -> {
             System.err.println("Ctrl-C, quitting nfc4pc");
@@ -85,10 +89,9 @@ public class MainWrapper extends CLIOptions {
     }
 
 
-    // See https://stackoverflow.com/questions/43669797/run-only-in-system-tray-with-no-dock-taskbar-icon-in-java
+
     private static boolean hasUI() {
         try {
-            System.setProperty("apple.awt.UIElement", "true");
             Toolkit tk = java.awt.Toolkit.getDefaultToolkit();
             return tk != null && !tk.getClass().getSimpleName().equals("HeadlessToolkit");
         } catch (Throwable e) {

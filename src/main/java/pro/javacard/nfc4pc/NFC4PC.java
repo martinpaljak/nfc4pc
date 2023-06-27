@@ -13,8 +13,9 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
-import java.util.Timer;
-import java.util.TimerTask;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 public class NFC4PC extends CLIOptions implements TapProcessor {
     static final Logger log = LoggerFactory.getLogger(NFC4PC.class);
@@ -23,28 +24,9 @@ public class NFC4PC extends CLIOptions implements TapProcessor {
 
     final static String ANSI_CLEAR_SCREEN = "\033[H\033[2J";
     boolean daemon;
+    ScheduledThreadPoolExecutor idle = new ScheduledThreadPoolExecutor(1);
 
-    Timer idle = new Timer("IdleTimeout");
-
-    static class IdleTimeout extends TimerTask {
-
-        final long seconds;
-        final Thread controlCHook;
-
-        IdleTimeout(long seconds, Thread controlCHook) {
-            this.seconds = seconds;
-            this.controlCHook = controlCHook;
-        }
-
-        @Override
-        public void run() {
-            System.err.printf("Timeout, no tap within %d seconds!%n", seconds);
-            Runtime.getRuntime().removeShutdownHook(controlCHook);
-            System.exit(2);
-        }
-    }
-
-    final TimerTask idler;
+    final ScheduledFuture<?> idler;
 
     URI webhook;
     final OptionSet opts;
@@ -64,23 +46,22 @@ public class NFC4PC extends CLIOptions implements TapProcessor {
 
         // Set idle quit for non-daemon mode
         if (!daemon) {
-            long secs = DEFAULT_TIMEOUT;
-
-            if (opts.has(OPT_TIMEOUT))
-                secs = opts.valueOf(OPT_TIMEOUT);
+            final long secs = opts.has(OPT_TIMEOUT) ? opts.valueOf(OPT_TIMEOUT) : DEFAULT_TIMEOUT;
 
             log.info("Timeout secs: {}", secs);
 
             // by default there is timeout, unless run with -t 0
             if (secs > 0) {
-                idler = new IdleTimeout(secs, shutdownHook);
-                idle.schedule(idler, secs * 1000);
+                idler = idle.schedule(() ->{
+                    System.err.printf("Timeout, no tap within %d seconds!%n", secs);
+                    Runtime.getRuntime().removeShutdownHook(shutdownHook);
+                    System.exit(2);
+                }, secs, TimeUnit.SECONDS);
             } else {
                 idler = null;
             }
         } else
             idler = null;
-
     }
 
     @Override
@@ -89,14 +70,14 @@ public class NFC4PC extends CLIOptions implements TapProcessor {
 
         // Cancel idler!
         if (idler != null)
-            idler.cancel();
+            idler.cancel(true);
 
         if (opts.has(OPT_CLEAR) && MainWrapper.tapCounter.get() > 0)
             System.out.print(ANSI_CLEAR_SCREEN);
         MainWrapper.tapCounter.incrementAndGet();
 
         if (opts.has(OPT_CONTINUE))
-            System.out.println("Tap #" + MainWrapper.tapCounter.get());
+            System.out.printf("Tap #%d (%s)%n", MainWrapper.tapCounter.get(), data.reader());
 
         try {
             if (data.error() != null) {
@@ -163,7 +144,7 @@ public class NFC4PC extends CLIOptions implements TapProcessor {
                 if (opts.has(OPT_UID_URL)) {
                     target = appendUri(opts.valueOf(OPT_UID_URL), "uid", uid2str(data.uid()));
                 } else {
-                    throw new IllegalStateException("Only UID available, but no UID URL configured!");
+                    return new URI("uid://"+uid2str(data.uid()));
                 }
             } else {
                 // or actual ndef url
@@ -185,10 +166,12 @@ public class NFC4PC extends CLIOptions implements TapProcessor {
 
     public static Process exec(String... args) throws IOException {
         log.info("Executing {}", Arrays.stream(args).toList());
-        // Prevent dock icon from popping up when run on macOS
-        System.setProperty("apple.awt.UIElement", "true");
-        // Inherit IO so that commands can print things
-        return new ProcessBuilder().inheritIO().command(args).start();
+        if (System.console() != null)
+            // Inherit IO so that commands can print things
+            return new ProcessBuilder().inheritIO().command(args).start();
+        else
+            // No need for IO if we don't have a console
+            return new ProcessBuilder().command(args).start();
     }
 
     public static void openBrowser(URI url, OptionSet opts) {

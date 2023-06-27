@@ -7,8 +7,8 @@ import joptsimple.OptionSpec;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.Arrays;
 import java.util.List;
+import java.util.Properties;
 import java.util.stream.Collectors;
 
 public abstract class CLIOptions {
@@ -61,7 +61,7 @@ public abstract class CLIOptions {
         }
 
         if (args.has(OPT_VERSION)) {
-            System.out.println("NFC4PC version X");
+            System.out.println("NFC4PC version " + CLIOptions.class.getPackage().getImplementationVersion());
             System.exit(0);
         }
 
