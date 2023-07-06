@@ -25,7 +25,7 @@ jobs:
           distribution: zulu
           cache: 'gradle'
       - name: Package
-        run: ./gradlew jar
+        run: ./gradlew --no-daemon jar
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         id: create_release
