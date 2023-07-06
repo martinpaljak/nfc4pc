@@ -26,6 +26,7 @@ jobs:
         with:
           java-version: ${{ matrix.java }}
           distribution: zulu
+          cache: 'gradle'
       - name: Package
         run: ./gradlew jar
       - name: Release
