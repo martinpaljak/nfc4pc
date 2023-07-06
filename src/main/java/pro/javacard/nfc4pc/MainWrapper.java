@@ -72,9 +72,11 @@ public class MainWrapper extends CLIOptions {
                         fail("No desktop available. Try headless mode with --headless");
                     DesktopApp.configure(app, shutdownThread);
                 } catch (Throwable ex) {
-                    ex.printStackTrace();
+//                    ex.printStackTrace();
                     System.err.println("No desktop UI available.");
-                    System.err.println("Please check https://github.com/martinpaljak/nfc4pc/wiki for troubleshooting");
+                    System.err.println("Please check https://github.com/martinpaljak/NFC4PC/wiki/JavaFX for troubleshooting");
+                    app.openBrowser(URI.create("https://github.com/martinpaljak/NFC4PC/wiki/JavaFX"));
+
                     Runtime.getRuntime().removeShutdownHook(shutdownThread);
                     System.exit(1);
                 }
