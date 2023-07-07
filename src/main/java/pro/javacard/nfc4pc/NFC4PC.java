@@ -72,12 +72,13 @@ public class NFC4PC extends CLIOptions implements TapProcessor {
         if (idler != null)
             idler.cancel(true);
 
+        // Clear screen if needed
         if (opts.has(OPT_CLEAR) && MainWrapper.tapCounter.get() > 0)
             System.out.print(ANSI_CLEAR_SCREEN);
         MainWrapper.tapCounter.incrementAndGet();
 
         if (opts.has(OPT_CONTINUE))
-            System.out.printf("Tap #%d (%s)%n", MainWrapper.tapCounter.get(), data.reader());
+            System.out.printf("# Tap #%d (%s)%n", MainWrapper.tapCounter.get(), data.reader());
 
         try {
             if (data.error() != null) {
@@ -104,6 +105,7 @@ public class NFC4PC extends CLIOptions implements TapProcessor {
                     }
 
                 } else {
+                    // FIXME: do not transform if printing UID
                     URI uri = transform(data, opts);
                     if (console()) {
                         if (opts.has(OPT_BROWSER)) {
@@ -124,7 +126,7 @@ public class NFC4PC extends CLIOptions implements TapProcessor {
         }
 
         if (!daemon) {
-            log.debug("Not daemon, exiting");
+            log.debug("Done, exiting");
             Runtime.getRuntime().removeShutdownHook(shutdownHook);
             System.exit(0);
         }

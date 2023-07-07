@@ -1,6 +1,7 @@
 package pro.javacard.nfc4pc;
 
 import apdu4j.core.APDUBIBO;
+import apdu4j.core.BIBOException;
 import apdu4j.pcsc.*;
 import apdu4j.pcsc.terminals.LoggingCardTerminal;
 import org.slf4j.Logger;
@@ -23,6 +24,7 @@ public class NFCReader implements PCSCMonitor {
     static final Logger log = LoggerFactory.getLogger(NFCReader.class);
 
     // Let's have a thread per reader and a monitoring thread, in addition to the UI thread. Many threads, yay!
+    // This is indeed too many threads, but it is also fun. At some point have an event thread and a worker thread and an outgoing read queue.
     private final TerminalManager manager = TerminalManager.getDefault();
     private final Thread pcscMonitor = new Thread(new HandyTerminalsMonitor(manager, this));
 
@@ -118,7 +120,7 @@ public class NFCReader implements PCSCMonitor {
             var url = NDEF.getType2(b).or(() -> NDEF.getType4(b));
 
             String location = null;
-            if (url.isPresent())
+            if (url.isPresent()) {
                 try {
                     // TODO: detect unknown payload. TODO: warn if smart poster
                     location = NDEF.msg2url(url.get());
@@ -127,9 +129,13 @@ public class NFCReader implements PCSCMonitor {
                     return;
                     //notifyUser(n, "Could not parse message etc");
                 }
+            }
             processor.onNFCTap(new NFCTapData(n, uid.get(), URI.create(location), null));
+        } catch (BIBOException e) {
+            // TODO: notify exclusively opened readers ?
+            log.error("Could not connect to or read: " + e.getMessage(), e);
+            processor.onNFCTap(new NFCTapData(n, new IOException("Could not read: " + SCard.getExceptionMessage(e))));
         } catch (Exception e) {
-            // TODO: notify exclusively opened readers
             log.error("Could not connect to or read: " + e.getMessage(), e);
             processor.onNFCTap(new NFCTapData(n, new IOException("Could not read: " + SCard.getExceptionMessage(e))));
         } finally {
