@@ -105,7 +105,10 @@ public class NFC4PC extends CLIOptions implements TapProcessor {
                     }
 
                 } else {
-                    // FIXME: do not transform if printing UID
+                    if (data.url() == null && !opts.has(OPT_UID_URL) && !opts.has(OPT_META_URL)) {
+                        log.info("Ignoring tag uid:{} without usable payload", HexUtils.bin2hex(data.uid()));
+                        return;
+                    }
                     URI uri = transform(data, opts);
                     if (console()) {
                         if (opts.has(OPT_BROWSER)) {
@@ -140,18 +143,12 @@ public class NFC4PC extends CLIOptions implements TapProcessor {
             if (data.url() != null) {
                 target = appendUri(target, "url", URLEncoder.encode(data.url().toASCIIString(), StandardCharsets.UTF_8));
             }
-        } else {
+        } else if (data.url() == null && opts.has(OPT_UID_URL)) {
             // or UID, if url is empty
-            if (data.url() == null) {
-                if (opts.has(OPT_UID_URL)) {
-                    target = appendUri(opts.valueOf(OPT_UID_URL), "uid", uid2str(data.uid()));
-                } else {
-                    return new URI("uid://"+uid2str(data.uid()));
-                }
-            } else {
-                // or actual ndef url
-                return data.url();
-            }
+            target = appendUri(opts.valueOf(OPT_UID_URL), "uid", uid2str(data.uid()));
+        } else {
+            // or actual ndef url
+            target = data.url();
         }
         return target;
     }

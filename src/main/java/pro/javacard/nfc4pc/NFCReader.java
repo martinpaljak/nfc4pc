@@ -124,13 +124,15 @@ public class NFCReader implements PCSCMonitor {
                 try {
                     // TODO: detect unknown payload. TODO: warn if smart poster
                     location = NDEF.msg2url(url.get());
+                    processor.onNFCTap(new NFCTapData(n, uid.get(), URI.create(location), null));
                 } catch (IllegalArgumentException e) {
                     processor.onNFCTap(new NFCTapData(n, uid.get(), e));
                     return;
                     //notifyUser(n, "Could not parse message etc");
                 }
+            } else {
+                processor.onNFCTap(new NFCTapData(n, uid.get(), null, null));
             }
-            processor.onNFCTap(new NFCTapData(n, uid.get(), URI.create(location), null));
         } catch (BIBOException e) {
             // TODO: notify exclusively opened readers ?
             log.error("Could not connect to or read: " + e.getMessage(), e);

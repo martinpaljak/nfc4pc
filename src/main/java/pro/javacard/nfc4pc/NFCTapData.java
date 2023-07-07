@@ -19,6 +19,6 @@ public record NFCTapData(String reader, byte[] uid, URI url, Exception error) {
 
     @Override
     public String toString() {
-        return String.format("TapData[reader=%s, uid=%s, url=%s, errpr=%s]", reader, HexUtils.bin2hex(uid), url, error);
+        return String.format("TapData[reader=%s, uid=%s, url=%s, error=%s]", reader, HexUtils.bin2hex(uid), url, error);
     }
 }
