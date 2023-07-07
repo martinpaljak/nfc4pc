@@ -103,11 +103,15 @@ public class NFC4PC extends CLIOptions implements TapProcessor {
                     } catch (Exception e) {
                         log.error("Failed to post webhook to " + opts.valueOf(OPT_WEBHOOK) + ": " + e.getMessage(), e);
                     }
-
                 } else {
                     if (data.url() == null && !opts.has(OPT_UID_URL) && !opts.has(OPT_META_URL)) {
-                        log.info("Ignoring tag uid:{} without usable payload", HexUtils.bin2hex(data.uid()));
-                        return;
+                        if (console())
+                            System.err.printf("# WARNING: No URL found in tag with UID %s, use -u to specify UID URL\n", uid2str(data.uid()));
+                        else
+                            log.info("Ignoring tag uid:{} without usable payload", uid2str(data.uid()));
+                        if (!daemon) {
+                            done(1);
+                        } else return;
                     }
                     URI uri = transform(data, opts);
                     if (console()) {
@@ -129,10 +133,15 @@ public class NFC4PC extends CLIOptions implements TapProcessor {
         }
 
         if (!daemon) {
-            log.debug("Done, exiting");
-            Runtime.getRuntime().removeShutdownHook(shutdownHook);
-            System.exit(0);
+            done(0);
         }
+    }
+
+
+    void done(int code) {
+        log.debug("Done, exiting");
+        Runtime.getRuntime().removeShutdownHook(shutdownHook);
+        System.exit(code);
     }
 
     static URI transform(NFCTapData data, OptionSet opts) throws URISyntaxException {

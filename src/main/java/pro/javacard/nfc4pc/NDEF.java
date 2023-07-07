@@ -83,20 +83,14 @@ public class NDEF {
     // Turn the NDEF wellknown URL record into URL string
     static String record2url(byte[] record) {
         String rest = new String(Arrays.copyOfRange(record, 1, record.length));
-        switch (record[0]) {
-            case 0x00:
-                return rest;
-            case 0x01:
-                return "http://www." + rest;
-            case 0x02:
-                return "https://www." + rest;
-            case 0x03:
-                return "http://" + rest;
-            case 0x04:
-                return "https://" + rest;
-            default:
-                throw new IllegalArgumentException("Unknown URL record type: " + HexUtils.bin2hex(record));
-        }
+        return switch (record[0]) {
+            case 0x00 -> rest;
+            case 0x01 -> "http://www." + rest;
+            case 0x02 -> "https://www." + rest;
+            case 0x03 -> "http://" + rest;
+            case 0x04 -> "https://" + rest;
+            default -> throw new IllegalArgumentException("Unsupported URL record type: " + HexUtils.bin2hex(record));
+        };
     }
 
     static byte[] type2_to_message(byte[] payload) {
@@ -120,7 +114,7 @@ public class NDEF {
             throw new IllegalArgumentException("Smart Poster would not be supported by iPhone. Ignoring");
 
         if (payload[1] != 0x01) {
-            throw new IllegalArgumentException("Unsupprted NDEF message: TNF length is not 1");
+            throw new IllegalArgumentException("Unsupported NDEF message: TNF length is not 1");
         }
         // Short record
         if ((payload[0] & 0x10) == 0x10) {
