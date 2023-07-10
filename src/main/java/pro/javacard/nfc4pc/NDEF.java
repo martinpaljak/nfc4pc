@@ -51,7 +51,7 @@ public class NDEF {
                         log.debug("Reading block {}", i);
                         log.debug("Current payload: ({} bytes) {}", payload.toByteArray().length, HexUtils.bin2hex(payload.toByteArray()));
 
-                        var block = b.transmit(new CommandAPDU(0xFF, 0xB0, 0x00, i, 0x10));
+                        var block = b.transmit(new CommandAPDU(0xFF, 0xB0, 0x00, i, 4));
                         var bytes = block.getData();
                         if (block.getSW() == 0x9000) {
                             log.debug("Block: {}", HexUtils.bin2hex(bytes));
