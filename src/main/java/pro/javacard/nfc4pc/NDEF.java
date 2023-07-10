@@ -35,33 +35,31 @@ public class NDEF {
         return true;
     }
 
-    // Returns the NDEF message
+    // Returns the NDEF message, if any
     static Optional<byte[]> getType2(APDUBIBO b) throws BIBOException {
         try {
-            // Read initial block
-            ResponseAPDU initial = b.transmit(new CommandAPDU(0xFF, 0xB0, 0x00, 3, 0x10));
-            if (initial.getSW() == 0x9000 && initial.getData().length == 0x10) {
+            // Read capability container
+            ResponseAPDU initial = b.transmit(new CommandAPDU(0xFF, 0xB0, 0x00, 3, 0x04));
+            if (initial.getSW() == 0x9000 && initial.getData().length == 4) {
                 var init = initial.getData();
-                log.debug("Initial read (blocks 3, 4, 5, 6): {}", HexUtils.bin2hex(init));
+                log.debug("Capability container: {}", HexUtils.bin2hex(init));
                 if (init[0] == (byte) 0xE1 && init[1] == 0x10) {
                     int total = (init[2] & 0xFF) * 8;
                     log.info("NDEF payload of {} bytes", total);
-                    int toRead = total - init.length - 4; // So that we don't read the OTP?
                     ByteArrayOutputStream payload = new ByteArrayOutputStream();
-                    payload.write(Arrays.copyOfRange(init, 4, init.length));
-                    for (int i = 7; (i - 3) * 4 < total; i += 4) {
-                        log.debug("Reading from block {} to {}, bytes {} to {}", i, i + 3, (i - 3) * 4, (i - 3) * 4 + 16);
+                    for (int i = 4; i * 4 < total; i++) {
+                        log.debug("Reading block {}", i);
                         log.debug("Current payload: ({} bytes) {}", payload.toByteArray().length, HexUtils.bin2hex(payload.toByteArray()));
 
                         var block = b.transmit(new CommandAPDU(0xFF, 0xB0, 0x00, i, 0x10));
-                        var uid_bytes = block.getData();
+                        var bytes = block.getData();
                         if (block.getSW() == 0x9000) {
-                            log.debug("Block: {}", HexUtils.bin2hex(uid_bytes));
-                            if (isNull(uid_bytes)) {
+                            log.debug("Block: {}", HexUtils.bin2hex(bytes));
+                            if (isNull(bytes)) {
                                 log.debug("Empty block, not reading more");
                                 break;
                             }
-                            payload.write(uid_bytes);
+                            payload.write(bytes);
                         } else {
                             log.warn("Read returned {}", HexUtils.bin2hex(block.getBytes()));
                             return Optional.empty();

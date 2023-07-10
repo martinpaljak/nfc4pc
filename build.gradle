@@ -7,7 +7,7 @@ plugins {
 }
 
 group 'pro.javacard.nfc4pc'
-version '230707'
+version '230708-next'
 
 repositories {
     mavenLocal()
