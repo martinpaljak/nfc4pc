@@ -61,6 +61,8 @@ public abstract class CLIOptions {
         }
 
         if (args.has(OPT_VERSION)) {
+            if (args.has(OPT_DEBUG))
+                System.out.printf("# Running Java %s (%s) from %s on %s %s%n", System.getProperty("java.version"),  System.getProperty("os.arch"), System.getProperty("java.vendor"), System.getProperty("os.name"), System.getProperty("os.version"));
             System.out.println("NFC4PC version " + CLIOptions.class.getPackage().getImplementationVersion());
             System.exit(0);
         }

@@ -2,6 +2,7 @@ plugins {
     id 'application'
     id 'org.openjfx.javafxplugin' version '0.0.14'
     id 'com.palantir.git-version' version '3.0.0' // for gitVersion()
+    id 'org.beryx.jlink' version '2.25.0'
  //    id 'com.gluonhq.client-gradle-plugin' version '0.1.42'
  //   id 'com.gluonhq.gluonfx-gradle-plugin' version '1.0.16'
 }
@@ -27,19 +28,26 @@ javafx {
     modules = ['javafx.controls', 'javafx.graphics', 'javafx.swing']
     //configuration = 'compileOnly'
 }
+
+jlink {
+    launcher {
+        name = 'nfc4pc'
+    }
+}
+
 //gluonClient {
 //    reflectionList = ["pro.javacard.nfc4pc.MainWrapper"]
 //}
 
 
 application {
-    mainClass = "$moduleName/pro.javacard.nfc4pc.MainWrapper"
     mainModule = "pro.javacard.nfc4pc"
+    mainClass = "pro.javacard.nfc4pc.MainWrapper"
 }
 
 jar {
     manifest {
-        attributes 'Main-Class': 'pro.javacard.nfc4pc.MainWrapper'
+        attributes 'Main-Class': application.mainClass
         attributes 'Implementation-Version': gitVersion()
     }
     from {
