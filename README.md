@@ -1,7 +1,8 @@
 # NFC for PC-s!
 
 [![Latest release](https://img.shields.io/github/release/martinpaljak/NFC4PC.svg)](https://github.com/martinpaljak/NFC4PC/releases/latest) &nbsp;
-[![Build status](https://github.com/martinpaljak/NFC4PC/workflows/Build%20robot/badge.svg?branch=main)](https://github.com/martinpaljak/NFC4PC/actions)
+[![Build status](https://github.com/martinpaljak/NFC4PC/workflows/Build%20robot/badge.svg?branch=main)](https://github.com/martinpaljak/NFC4PC/actions) &nbsp;
+[![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 
 > Makes your Desktop PC open NFC URL-s from compatible devices, just like a mobile phone does!
