@@ -15,6 +15,9 @@ repositories {
     maven {
         url 'https://javacard.pro/maven/'
     }
+    maven {
+        url 'https://javacard.pro/maven/SNAPSHOTS/'
+    }
     mavenCentral()
 }
 
