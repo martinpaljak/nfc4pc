@@ -38,20 +38,22 @@ public class NDEF {
     // Returns the NDEF message, if any
     static Optional<byte[]> getType2(APDUBIBO b) throws BIBOException {
         try {
-            // Read capability container
+            // Read capability container (4th block)
             ResponseAPDU initial = b.transmit(new CommandAPDU(0xFF, 0xB0, 0x00, 3, 0x04));
-            if (initial.getSW() == 0x9000 && initial.getData().length == 4) {
+            // Cloud 3700F: returns 4 bytes even if asked for 16. OK 5022 returns 16 bytes even if asked for 4.
+            if (initial.getSW() == 0x9000 && initial.getData().length >= 4) {
                 var init = initial.getData();
                 log.debug("Capability container: {}", HexUtils.bin2hex(init));
                 if (init[0] == (byte) 0xE1 && init[1] == 0x10) {
                     int total = (init[2] & 0xFF) * 8;
                     log.info("NDEF payload of {} bytes", total);
                     ByteArrayOutputStream payload = new ByteArrayOutputStream();
-                    for (int i = 4; i * 4 < total; i++) {
-                        log.debug("Reading block {}", i);
+
+                    for (int blocknum = 4; payload.toByteArray().length < total; ) {
+                        log.debug("Reading block {}", blocknum);
                         log.debug("Current payload: ({} bytes) {}", payload.toByteArray().length, HexUtils.bin2hex(payload.toByteArray()));
 
-                        var block = b.transmit(new CommandAPDU(0xFF, 0xB0, 0x00, i, 4));
+                        var block = b.transmit(new CommandAPDU(0xFF, 0xB0, 0x00, blocknum, 4));
                         var bytes = block.getData();
                         if (block.getSW() == 0x9000) {
                             log.debug("Block: {}", HexUtils.bin2hex(bytes));
@@ -60,6 +62,7 @@ public class NDEF {
                                 break;
                             }
                             payload.write(bytes);
+                            blocknum += bytes.length / 4;
                         } else {
                             log.warn("Read returned {}", HexUtils.bin2hex(block.getBytes()));
                             return Optional.empty();
@@ -92,8 +95,15 @@ public class NDEF {
     }
 
     static byte[] type2_to_message(byte[] payload) {
-        // Type 2: tag 03 with lentgh, so offset 2
-        return Arrays.copyOfRange(payload, 2, payload.length);
+        log.debug("Parsing {}", HexUtils.bin2hex(payload));
+        int pos = 0;
+        if (payload[pos] == 0x01)
+            pos += payload[pos + 1] + 1;
+        if (payload[pos] == 0x02)
+            pos += payload[pos + 1] + 1;
+        byte[] msg = Arrays.copyOfRange(payload, pos + 2, pos + 2 + payload[pos + 1]);
+        log.debug("Message: {}", HexUtils.bin2hex(msg));
+        return msg;
     }
 
     static byte[] type4_to_message(byte[] payload) {
@@ -120,7 +130,7 @@ public class NDEF {
                 throw new IllegalArgumentException("Unsupported TNF");
             int len = payload[2] & 0xFF;
             record = Arrays.copyOfRange(payload, 4, 4 + len);
-        } else if ((payload[0] & 0x10) == 0x00){
+        } else if ((payload[0] & 0x10) == 0x00) {
             if (payload[6] != 0x55)
                 throw new IllegalArgumentException("Unsupported TNF");
             ByteBuffer buffer = ByteBuffer.wrap(payload);
