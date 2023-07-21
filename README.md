@@ -12,7 +12,9 @@ Small Java application to solve "I want my PC to behave like a mobile phone" whe
 > https://superuser.com/questions/1756090/how-to-open-nfc-tags-on-windows-like-a-mobile-phone-woulda
 
 ### See it in action!
-A crappy video of a quick hack! https://mrtn.ee/tmp/nfc4pc.mp4
+A crappy video of a quick hack: https://mrtn.ee/tmp/nfc4pc.mp4
+
+[![asciicast](https://asciinema.org/a/IwwG0atKnyrCLYdPu2uJ11wg4.svg)](https://asciinema.org/a/IwwG0atKnyrCLYdPu2uJ11wg4)
 
 # Documentation
 Go to Wiki for more information https://github.com/martinpaljak/NFC4PC/wiki
