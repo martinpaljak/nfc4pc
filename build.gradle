@@ -8,7 +8,7 @@ plugins {
 }
 
 group 'pro.javacard.nfc4pc'
-version '230711-next'
+version = file('version.txt').text.trim()
 
 repositories {
     mavenLocal()
