@@ -25,7 +25,7 @@ jobs:
           distribution: zulu
           cache: 'gradle'
       - name: Package
-        run: date +%y%m%d > version.txt && ./gradlew --no-daemon jar
+        run: date +%y.%m.%d.${{github.run_number}} > version.txt && ./gradlew --no-daemon shadowJar
       - uses: actions/upload-artifact@v3
         with:
           name: jar
