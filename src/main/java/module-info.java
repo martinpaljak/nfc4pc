@@ -1,7 +1,7 @@
 module pro.javacard.nfc4pc {
     requires javafx.controls;
     requires javafx.graphics;
-    requires javafx.swingEmpty;
+    requires javafx.swing;
     requires apdu4j.pcsc;
     requires apdu4j.core;
     requires java.desktop;

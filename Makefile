@@ -1,3 +1,3 @@
 conveyor:
-	./gradlew clean jar
+	./gradlew clean shadowJar
 	conveyor make site --overwrite
