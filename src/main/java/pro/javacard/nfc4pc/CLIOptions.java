@@ -18,7 +18,7 @@ public abstract class CLIOptions {
     protected static OptionSpec<Void> OPT_DEBUG = parser.acceptsAll(List.of("d", "debug"), "Show debugging logs");
     protected static OptionSpec<Void> OPT_DESKTOP = parser.acceptsAll(List.of("desktop"), "Run as system tray item");
     protected static OptionSpec<Void> OPT_CONTINUE = parser.acceptsAll(List.of("c", "continue"), "Read continuously");
-    protected static OptionSpec<Void> OPT_CLEAR = parser.acceptsAll(List.of("C", "clear"), "Clear screen and read continuously");
+    protected static OptionSpec<Void> OPT_CLEAR = parser.acceptsAll(List.of("C", "clear"), "Clear screen and read continuously").availableIf(OPT_CONTINUE);
     protected static OptionSpec<URI> OPT_UID_URL = parser.acceptsAll(List.of("uid-url"), "Launch UID-s at given URL").withRequiredArg().ofType(URI.class);
     protected static OptionSpec<URI> OPT_WEBHOOK = parser.acceptsAll(List.of("webhook"), "Post data to webhook").withRequiredArg().ofType(URI.class);
     protected static OptionSpec<String> OPT_AUTHORIZATION = parser.acceptsAll(List.of("authorization"), "Authorization header for webhook").availableIf(OPT_WEBHOOK).withRequiredArg();
