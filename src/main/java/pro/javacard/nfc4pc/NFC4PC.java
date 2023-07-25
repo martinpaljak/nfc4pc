@@ -78,7 +78,7 @@ public class NFC4PC extends CLIOptions implements TapProcessor {
         MainWrapper.tapCounter.incrementAndGet();
 
         if (opts.has(OPT_CONTINUE))
-            System.out.printf("# Tap #%d (%s)%n", MainWrapper.tapCounter.get(), data.reader());
+            System.err.printf("# Tap #%d (%s)%n", MainWrapper.tapCounter.get(), data.reader());
 
         try {
             if (data.error() != null) {

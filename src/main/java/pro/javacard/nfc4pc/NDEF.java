@@ -81,7 +81,7 @@ public class NDEF {
         return Optional.empty();
     }
 
-    // Turn the NDEF wellknown URL record into URL string
+    // Turn the NDEF well-known URL record into URL string
     static String record2url(byte[] record) {
         String rest = new String(Arrays.copyOfRange(record, 1, record.length));
         return switch (record[0]) {
