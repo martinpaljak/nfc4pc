@@ -26,6 +26,10 @@ jobs:
           cache: 'gradle'
       - name: Package
         run: date +%y%m%d > version.txt && ./gradlew --no-daemon jar
+      - uses: actions/upload-artifact@v3
+        with:
+          name: jar
+          path: build/libs/nfc4pc-*.jar
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         id: create_release
