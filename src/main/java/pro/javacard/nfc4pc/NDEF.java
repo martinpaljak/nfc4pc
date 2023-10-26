@@ -150,25 +150,43 @@ public class NDEF {
                     // Capabilities
                     ResponseAPDU read = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x00, 0x0F));
 
+                    // We always use short APDU-s
                     int maxReadSize = getShort(read.getData(), (short) 3);
+                    if (maxReadSize > 0x100) {
+                        log.warn("Max read size is {}, limiting to 256", maxReadSize);
+                        maxReadSize = 0x100;
+                    }
+
+                    // This DOES include the 2 byte header
                     int payloadSize = getShort(read.getData(), (short) 11);
 
                     ResponseAPDU selectDATA = bibo.transceive(new CommandAPDU(0x00, 0xA4, 0x00, 0x0C, HexUtils.hex2bin("e104")));
                     if (selectDATA.getSW() == 0x9000) {
                         ResponseAPDU len = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x00, 0x02));
-                        int reportedLen = getShort(len.getData(), (short) 0);
-                        if ((reportedLen + 2) != payloadSize) {
-                            log.error("Warning: payload length mismatch");
-                        }
                         if (len.getSW() == 0x9000) {
-                            final byte[] payload;
-                            if (reportedLen > maxReadSize) { // XXX: assumes that not that big
-                                byte[] chunk1 = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x02, maxReadSize)).getData();
-                                byte[] chunk2 = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, maxReadSize + 2, reportedLen - maxReadSize)).getData();
-                                payload = concatenate(chunk1, chunk2);
-                            } else {
-                                payload = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x02, reportedLen)).getData();
+                            // 2 byte header contains the payload length AFTER the header
+                            int reportedLen = getShort(len.getData(), (short) 0);
+                            if ((reportedLen + 2) != payloadSize) {
+                                log.error("Warning: payload length mismatch");
                             }
+
+                            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                            int offset;
+                            int i;
+                            // Limit up to 10 reads
+                            for (offset = 2, i = 0; offset < payloadSize && i < 10; i++) {
+                                int left = payloadSize - offset;
+
+                                ResponseAPDU readResponse = bibo.transceive(new CommandAPDU(0x00, 0xb0, offset >> 8, offset, Math.min(left, maxReadSize)));
+                                if (readResponse.getSW() != 0x9000) {
+                                    log.error("Read returned: {}", readResponse.getSW());
+                                    return Optional.empty();
+                                }
+                                byte[] chunk = readResponse.getData();
+                                offset += chunk.length;
+                                bos.writeBytes(chunk);
+                            }
+                            byte[] payload = bos.toByteArray();
                             log.info("Payload: " + HexUtils.bin2hex(payload));
                             return Optional.of(payload);
                         }

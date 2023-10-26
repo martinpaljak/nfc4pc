@@ -8,7 +8,6 @@ import joptsimple.OptionSpec;
 import java.io.IOException;
 import java.net.URI;
 import java.util.List;
-import java.util.Properties;
 import java.util.stream.Collectors;
 
 public abstract class CLIOptions {
