@@ -35,7 +35,7 @@ compileJava {
 }
 
 javafx {
-    version = "20.0.1"
+    version = "21.0.1"
     modules = ['javafx.controls', 'javafx.graphics', 'javafx.swing']
     //configuration = 'compileOnly'
 }
