@@ -25,7 +25,11 @@ jobs:
           distribution: zulu
           cache: 'gradle'
       - name: Package
-        run: ./gradlew --no-daemon jar
+        run: date +%y.%m.%d.${{github.run_number}} > version.txt && ./gradlew --no-daemon shadowJar
+      - uses: actions/upload-artifact@v3
+        with:
+          name: jar
+          path: build/libs/nfc4pc-*.jar
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         id: create_release
