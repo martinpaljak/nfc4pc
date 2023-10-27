@@ -156,6 +156,7 @@ public class NDEF {
                         log.warn("Max read size is {}, limiting to 256", maxReadSize);
                         maxReadSize = 0x100;
                     }
+                    log.debug("Max read size: {}", maxReadSize);
 
                     // This DOES include the 2 byte header
                     int payloadSize = getShort(read.getData(), (short) 11);
@@ -167,7 +168,7 @@ public class NDEF {
                             // 2 byte header contains the payload length AFTER the header
                             int reportedLen = getShort(len.getData(), (short) 0);
                             if ((reportedLen + 2) != payloadSize) {
-                                log.error("Warning: payload length mismatch");
+                                log.warn("Warning: payload length mismatch: {} in capability, {} in data", payloadSize, reportedLen + 2);
                             }
 
                             ByteArrayOutputStream bos = new ByteArrayOutputStream();
@@ -179,7 +180,7 @@ public class NDEF {
 
                                 ResponseAPDU readResponse = bibo.transceive(new CommandAPDU(0x00, 0xb0, offset >> 8, offset, Math.min(left, maxReadSize)));
                                 if (readResponse.getSW() != 0x9000) {
-                                    log.error("Read returned: {}", readResponse.getSW());
+                                    log.error("Read returned: {}", Integer.toHexString(readResponse.getSW()));
                                     return Optional.empty();
                                 }
                                 byte[] chunk = readResponse.getData();
