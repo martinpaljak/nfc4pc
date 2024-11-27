@@ -1,24 +1,33 @@
 plugins {
     id 'application'
-    id 'org.openjfx.javafxplugin' version '0.0.14'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+    id 'org.javamodularity.moduleplugin' version '1.8.15'
+    id 'org.openjfx.javafxplugin' version '0.1.0'
     id 'com.palantir.git-version' version '3.0.0' // for gitVersion()
-    id 'org.beryx.jlink' version '2.25.0'
- //    id 'com.gluonhq.client-gradle-plugin' version '0.1.42'
- //   id 'com.gluonhq.gluonfx-gradle-plugin' version '1.0.16'
+    //id 'dev.hydraulic.conveyor' version '1.9'
+    id 'org.beryx.jlink' version '3.0.1'
 }
+// Cheap enforcer
+assert JavaVersion.current().equals(JavaVersion.VERSION_17)
 
 group 'pro.javacard.nfc4pc'
-version '230711-next'
+version = file('version.txt').text.trim()
 
 repositories {
     mavenLocal()
     maven {
-        url 'https://javacard.pro/maven/'
+        url 'https://mvn.javacard.pro/maven/'
     }
     maven {
-        url 'https://javacard.pro/maven/SNAPSHOTS/'
+        url 'https://mvn.javacard.pro/maven/SNAPSHOTS/'
     }
     mavenCentral()
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
 }
 
 compileJava {
@@ -27,25 +36,14 @@ compileJava {
 }
 
 javafx {
-    version = "20.0.1"
+    version = '21.0.2'
     modules = ['javafx.controls', 'javafx.graphics', 'javafx.swing']
     //configuration = 'compileOnly'
 }
 
-jlink {
-    launcher {
-        name = 'nfc4pc'
-    }
-}
-
-//gluonClient {
-//    reflectionList = ["pro.javacard.nfc4pc.MainWrapper"]
-//}
-
-
 application {
-    mainModule = "pro.javacard.nfc4pc"
-    mainClass = "pro.javacard.nfc4pc.MainWrapper"
+    mainModule = 'pro.javacard.nfc4pc'
+    mainClass = 'pro.javacard.nfc4pc.MainWrapper'
 }
 
 jar {
@@ -53,12 +51,15 @@ jar {
         attributes 'Main-Class': application.mainClass
         attributes 'Implementation-Version': gitVersion()
     }
-    from {
-        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
-    }
-    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+//        from {
+//        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+//    }
+//    duplicatesStrategy = DuplicatesStrategy.INCLUDE
 }
 
+shadowJar {
+    archiveClassifier.set('')
+}
 
 dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
@@ -66,10 +67,11 @@ dependencies {
 
     implementation 'com.github.martinpaljak:apdu4j-pcsc:23.03.22-SNAPSHOT'
     implementation 'com.dustinredmond.fxtrayicon:FXTrayIcon:4.0.1'
-    implementation 'org.slf4j:slf4j-simple:2.0.7'
+    implementation 'org.slf4j:slf4j-api:2.0.12'
+    implementation 'org.slf4j:slf4j-simple:2.0.12'
     implementation 'net.sf.jopt-simple:jopt-simple:5.0.4'
     implementation 'com.payneteasy:ber-tlv:1.0-11'
-    implementation 'com.google.zxing:core:3.5.1'
+    implementation 'com.google.zxing:core:3.5.3'
 
     runtimeOnly "org.openjfx:javafx-graphics:$javafx.version:win"
     runtimeOnly "org.openjfx:javafx-graphics:$javafx.version:mac"
