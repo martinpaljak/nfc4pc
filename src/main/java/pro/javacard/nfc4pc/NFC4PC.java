@@ -9,8 +9,6 @@ import java.awt.*;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.concurrent.ScheduledFuture;
@@ -52,7 +50,7 @@ public class NFC4PC extends CLIOptions implements TapProcessor {
 
             // by default there is timeout, unless run with -t 0
             if (secs > 0) {
-                idler = idle.schedule(() ->{
+                idler = idle.schedule(() -> {
                     System.err.printf("Timeout, no tap within %d seconds!%n", secs);
                     Runtime.getRuntime().removeShutdownHook(shutdownHook);
                     System.exit(2);
@@ -78,7 +76,7 @@ public class NFC4PC extends CLIOptions implements TapProcessor {
         MainWrapper.tapCounter.incrementAndGet();
 
         if (opts.has(OPT_CONTINUE))
-            System.out.printf("# Tap #%d (%s)%n", MainWrapper.tapCounter.get(), data.reader());
+            System.err.printf("# Tap #%d (%s)%n", MainWrapper.tapCounter.get(), data.reader());
 
         try {
             if (data.error() != null) {
@@ -150,7 +148,8 @@ public class NFC4PC extends CLIOptions implements TapProcessor {
         if (opts.has(OPT_META_URL)) {
             target = appendUri(opts.valueOf(OPT_META_URL), "uid", uid2str(data.uid()));
             if (data.url() != null) {
-                target = appendUri(target, "url", URLEncoder.encode(data.url().toASCIIString(), StandardCharsets.UTF_8));
+                // NOTE: appendUri does urlencoding as it constructs a new URI from string components
+                target = appendUri(target, "url", data.url().toASCIIString());
             }
         } else if (data.url() == null && opts.has(OPT_UID_URL)) {
             // or UID, if url is empty

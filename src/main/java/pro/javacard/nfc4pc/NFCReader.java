@@ -12,6 +12,7 @@ import javax.smartcardio.CardException;
 import javax.smartcardio.CardTerminal;
 import java.io.IOException;
 import java.net.URI;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +44,7 @@ public class NFCReader implements PCSCMonitor {
     }
 
     // This is a fun exercise, we have a thread per reader and use the thread name for logging as well as reader access.
-    private  void onReaderThread(String name, Runnable r) {
+    private void onReaderThread(String name, Runnable r) {
         readerThreads.computeIfAbsent(name, (n) -> Executors.newSingleThreadExecutor(new NamedReaderThreadFactory(n))).submit(r);
     }
 
@@ -110,6 +111,8 @@ public class NFCReader implements PCSCMonitor {
             c.beginExclusive(); // Use locking, as this is short read
             // get UID
             APDUBIBO b = new APDUBIBO(CardBIBO.wrap(c));
+
+            long start = System.currentTimeMillis();
             var uid = NDEF.getUID(b);
             if (uid.isEmpty()) {
                 log.info("No UID, assuming not a supported contactless reader/device");
@@ -118,20 +121,22 @@ public class NFCReader implements PCSCMonitor {
             }
             // Type 2 > Type 4
             var url = NDEF.getType2(b).or(() -> NDEF.getType4(b));
+            Duration readtime = Duration.ofMillis(System.currentTimeMillis() - start);
+
 
             String location = null;
             if (url.isPresent()) {
                 try {
                     // TODO: detect unknown payload. TODO: warn if smart poster
                     location = NDEF.msg2url(url.get());
-                    processor.onNFCTap(new NFCTapData(n, uid.get(), URI.create(location), null));
+                    processor.onNFCTap(new NFCTapData(n, uid.get(), URI.create(location), readtime, null));
                 } catch (IllegalArgumentException e) {
                     processor.onNFCTap(new NFCTapData(n, uid.get(), e));
                     return;
                     //notifyUser(n, "Could not parse message etc");
                 }
             } else {
-                processor.onNFCTap(new NFCTapData(n, uid.get(), null, null));
+                processor.onNFCTap(new NFCTapData(n, uid.get(), null, readtime, null));
             }
         } catch (BIBOException e) {
             // TODO: notify exclusively opened readers ?
