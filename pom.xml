@@ -8,9 +8,12 @@
     <packaging>jar</packaging>
     <name>nfc4pc</name>
     <url>https://github.com/martinpaljak/nfc4pc</url>
-    <description>Working with smart card readers? This is for you.</description>
+    <description>Make your PC open links on NFC tags, like a phone!</description>
     <properties>
         <project.build.outputTimestamp>2024-09-26T12:49:53Z</project.build.outputTimestamp>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <javafx.version>21.0.5</javafx.version>
     </properties>
     <scm>
         <url>https://github.com/martinpaljak/nfc4pc</url>
@@ -36,47 +39,17 @@
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-controls</artifactId>
-            <version>21.0.5</version>
+            <version>${javafx.version}</version>
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-swing</artifactId>
-            <version>21.0.5</version>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-graphics</artifactId>
-            <version>21.0.5</version>
+            <version>${javafx.version}</version>
         </dependency>
         <dependency>
             <groupId>com.dustinredmond.fxtrayicon</groupId>
             <artifactId>FXTrayIcon</artifactId>
             <version>4.2.0</version>
-        </dependency>
-        <!-- Runtime files for target platforms for JavaFX -->
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-graphics</artifactId>
-            <version>21.0.5</version>
-            <classifier>win</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-graphics</artifactId>
-            <version>21.0.5</version>
-            <classifier>linux</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-graphics</artifactId>
-            <version>21.0.5</version>
-            <classifier>mac</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-graphics</artifactId>
-            <version>21.0.5</version>
-            <classifier>mac-aarch64</classifier>
         </dependency>
         <!-- PC/SC -->
         <dependency>
@@ -117,12 +90,38 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>
-            <version>5.10.3</version>
+            <version>5.11.3</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
     <build>
         <plugins>
+            <!-- Minimum Maven version. Not really relevant with wrapper -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>enforce-maven-version</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <version>[17,)</version>
+                                    <message>Project requires JDK 17+</message>
+                                </requireJavaVersion>
+                                <requireMavenVersion>
+                                    <version>[3.9.9,)</version>
+                                </requireMavenVersion>
+                                <!--requirePluginVersions/-->
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.openjfx</groupId>
                 <artifactId>javafx-maven-plugin</artifactId>
@@ -161,6 +160,9 @@
                         <configuration>
                             <finalName>nfc4pc</finalName>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <extraArtifacts>
+                                org.openjfx:javafx-graphics:jar:mac:${javafx.version},org.openjfx:javafx-graphics:jar:mac-aarch64:${javafx.version},org.openjfx:javafx-graphics:jar:linux:${javafx.version},org.openjfx:javafx-graphics:jar:win:${javafx.version}
+                            </extraArtifacts>
                             <transformers>
                                 <transformer
                                         implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
