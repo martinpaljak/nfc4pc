@@ -6,7 +6,8 @@
 &nbsp;[![Made in Estonia](https://img.shields.io/badge/Made_in-Estonia-blue)](https://estonia.ee)
 
 
-> Makes your Desktop PC open NFC URL-s from compatible devices, just like a mobile phone does!
+> [!IMPORTANT]
+> **Makes your Desktop PC open NFC URL-s from compatible devices, just like a mobile phone does!**
 
 Small Java application to solve "I want my PC to behave like a mobile phone" when working with NFC tags containing URL-s.
 
