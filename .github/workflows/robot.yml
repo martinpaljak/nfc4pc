@@ -13,7 +13,7 @@ name: Build robot
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: Build and possibly release
     steps:
       - name: Checkout
