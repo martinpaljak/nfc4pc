@@ -4,6 +4,9 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
+/target
+.mvn/wrapper/maven-wrapper.jar
+
 ### IntelliJ IDEA ###
 /.idea
 *.iws
