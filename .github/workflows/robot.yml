@@ -25,7 +25,7 @@ jobs:
           distribution: zulu
           cache: 'maven'
       - name: Package
-        run: ./mvnw clean package
+        run: ./mvnw -T1C clean package
       - uses: actions/upload-artifact@v4
         with:
           name: jar
@@ -33,7 +33,7 @@ jobs:
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         id: create_release
-        uses: softprops/action-gh-release@v2.0.4
+        uses: softprops/action-gh-release@v2.2.0
         with:
           files: |
             target/nfc4pc.jar
