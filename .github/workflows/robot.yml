@@ -4,10 +4,10 @@ on:
       - 'v*'
     branches:
       - main
+      - next
   pull_request:
     branches:
       - main
-
 
 name: Build robot
 
