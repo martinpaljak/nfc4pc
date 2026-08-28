@@ -73,7 +73,7 @@ public class Emulation extends CLIOptions {
             TerminalManager manager = TerminalManager.getDefault();
             final CardTerminal term;
             if (opts.has(OPT_READER))
-                term = manager.getTerminal(opts.valueOf(OPT_READER));
+                term = manager.terminal(opts.valueOf(OPT_READER));
             else {
                 List<CardTerminal> terminals = manager.terminals().list();
                 terminals.stream().forEach(r -> log.debug("Found reader: {}", r.getName()));

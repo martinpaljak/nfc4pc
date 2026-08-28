@@ -1,6 +1,6 @@
 package pro.javacard.nfc4pc;
 
-import apdu4j.core.APDUBIBO;
+import apdu4j.core.BIBO;
 import apdu4j.core.BIBOException;
 import apdu4j.pcsc.*;
 import apdu4j.pcsc.terminals.LoggingCardTerminal;
@@ -75,11 +75,11 @@ public class NFCReader implements PCSCMonitor {
         boolean firstRun = readerStates.isEmpty(); // Require fresh tap
 
         Map<String, Boolean> newStates = new HashMap<>();
-        list.forEach(e -> newStates.put(e.getName(), e.isPresent()));
+        list.forEach(e -> newStates.put(e.name(), e.present()));
 
         for (PCSCReader e : list) {
-            String n = e.getName();
-            if (e.isExclusive()) {
+            String n = e.name();
+            if (e.exclusive()) {
                 log.debug("Ignoring exclusively in use reader \"{}\"", n);
             } else if (newStates.get(n) && !readerStates.getOrDefault(n, false) && !firstRun) {
                 log.debug("Detected change in reader \"{}\"", n);
@@ -100,7 +100,7 @@ public class NFCReader implements PCSCMonitor {
         // We manually open the instance
         CardTerminal t = readers.get();
         if (t == null) {
-            t = log.isDebugEnabled() ? LoggingCardTerminal.getInstance(manager.getTerminal(n), System.err) : manager.getTerminal(n);
+            t = log.isDebugEnabled() ? LoggingCardTerminal.getInstance(manager.terminal(n), System.err) : manager.terminal(n);
             readers.set(t);
         }
 
@@ -110,7 +110,7 @@ public class NFCReader implements PCSCMonitor {
             c = t.connect("*");
             c.beginExclusive(); // Use locking, as this is short read
             // get UID
-            APDUBIBO b = new APDUBIBO(CardBIBO.wrap(c));
+            BIBO b = CardBIBO.wrap(c);
 
             long start = System.currentTimeMillis();
             var uid = NDEF.getUID(b);

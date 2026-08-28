@@ -17,7 +17,7 @@ public class NDEF {
     static final byte[] NDEF_AID = new byte[]{(byte) 0xD2, (byte) 0x76, (byte) 0x00, (byte) 0x00, (byte) 0x85, (byte) 0x01, (byte) 0x01};
 
     // Reads the UID, if available (might not be supported by reader or might be unsupported chip/technology)
-    static Optional<byte[]> getUID(APDUBIBO b) throws BIBOException {
+    static Optional<byte[]> getUID(BIBO b) throws BIBOException {
         var uid = b.transmit(new CommandAPDU(0xFF, 0xCA, 0x00, 0x00, 256));
 
         if (uid.getSW() == 0x9000 && Arrays.asList(4, 7, 10).contains(uid.getData().length)) {
@@ -36,7 +36,7 @@ public class NDEF {
     }
 
     // Returns the NDEF message, if any
-    static Optional<byte[]> getType2(APDUBIBO b) throws BIBOException {
+    static Optional<byte[]> getType2(BIBO b) throws BIBOException {
         try {
             // Read capability container (4th block)
             ResponseAPDU initial = b.transmit(new CommandAPDU(0xFF, 0xB0, 0x00, 3, 0x04));
@@ -140,15 +140,15 @@ public class NDEF {
         return record2url(record);
     }
 
-    static Optional<byte[]> getType4(APDUBIBO bibo) {
+    static Optional<byte[]> getType4(BIBO bibo) {
         log.debug("Trying to read Type 4 NDEF tag");
         try {
-            ResponseAPDU select = bibo.transceive(new CommandAPDU(0x00, 0xA4, 0x04, 0x00, NDEF_AID, 256));
+            ResponseAPDU select = bibo.transmit(new CommandAPDU(0x00, 0xA4, 0x04, 0x00, NDEF_AID, 256));
             if (select.getSW() == 0x9000) {
-                ResponseAPDU cap = bibo.transceive(new CommandAPDU(0x00, 0xA4, 0x00, 0x0C, HexUtils.hex2bin("e103")));
+                ResponseAPDU cap = bibo.transmit(new CommandAPDU(0x00, 0xA4, 0x00, 0x0C, HexUtils.hex2bin("e103")));
                 if (cap.getSW() == 0x9000) {
                     // Capabilities
-                    ResponseAPDU read = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x00, 0x0F));
+                    ResponseAPDU read = bibo.transmit(new CommandAPDU(0x00, 0xb0, 0x00, 0x00, 0x0F));
 
                     // We always use short APDU-s
                     int maxReadSize = getShort(read.getData(), (short) 3);
@@ -161,9 +161,9 @@ public class NDEF {
                     // This DOES include the 2 byte header
                     int payloadSize = getShort(read.getData(), (short) 11);
 
-                    ResponseAPDU selectDATA = bibo.transceive(new CommandAPDU(0x00, 0xA4, 0x00, 0x0C, HexUtils.hex2bin("e104")));
+                    ResponseAPDU selectDATA = bibo.transmit(new CommandAPDU(0x00, 0xA4, 0x00, 0x0C, HexUtils.hex2bin("e104")));
                     if (selectDATA.getSW() == 0x9000) {
-                        ResponseAPDU len = bibo.transceive(new CommandAPDU(0x00, 0xb0, 0x00, 0x00, 0x02));
+                        ResponseAPDU len = bibo.transmit(new CommandAPDU(0x00, 0xb0, 0x00, 0x00, 0x02));
                         if (len.getSW() == 0x9000) {
                             // 2 byte header contains the payload length AFTER the header
                             int reportedLen = getShort(len.getData(), (short) 0);
@@ -178,7 +178,7 @@ public class NDEF {
                             for (offset = 2, i = 0; offset < payloadSize && i < 10; i++) {
                                 int left = payloadSize - offset;
 
-                                ResponseAPDU readResponse = bibo.transceive(new CommandAPDU(0x00, 0xb0, offset >> 8, offset, Math.min(left, maxReadSize)));
+                                ResponseAPDU readResponse = bibo.transmit(new CommandAPDU(0x00, 0xb0, offset >> 8, offset, Math.min(left, maxReadSize)));
                                 if (readResponse.getSW() != 0x9000) {
                                     log.error("Read returned: {}", Integer.toHexString(readResponse.getSW()));
                                     return Optional.empty();
